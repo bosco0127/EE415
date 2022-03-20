@@ -220,10 +220,18 @@ void remove_from_donations(struct lock *lock) {
   struct list_elem *donate_elem;
   struct thread *cur = lock->holder;
 
-  for(donate_elem = list_begin(&cur->donations); donate_elem != list_end(&cur->donations); donate_elem = list_next(donate_elem)){
+  for(donate_elem = list_begin(&cur->donations); donate_elem != list_end(&cur->donations);){
     struct thread *t = list_entry(donate_elem, struct thread, d_elem);
     if(t->wait_on_lock == lock) {
-      list_remove(&t->d_elem);
+      // remove and get next element.
+      donate_elem = list_remove(&t->d_elem);
+      // set prev, next as NULL
+      t->d_elem.next=NULL;
+      t->d_elem.prev=NULL;
+    }
+    else {
+      // else get next element.
+      donate_elem = list_next(donate_elem);
     }
   }
 }

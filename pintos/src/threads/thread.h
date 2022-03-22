@@ -93,15 +93,21 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
-   // 어떤 thread가 잠든 후 일어나기까지 시간 wakeup_ticks 추가 -> ppt 13 slide
+   /* 어떤 thread가 잠든 후 일어나기까지 시간 wakeup_ticks 추가 - project 1-1 추가 */
    int64_t wakeup_ticks;
-
-   // Project 1.2 Priority Donation
+   // 마지막에 thread의 latency 측정 과정에서 이용
+   int64_t create_ticks;
+   
+   /* project 1-2 추가 */
    struct lock *wait_on_lock;
    struct list donations;
-   struct list_elem d_elem;
-   // need to memorize initial priority
+   struct list_elem donation_elem;
    int initial_priority;
+
+   /* project 1-3 추가 */
+   int nice;
+   int recent_cpu;
+
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -149,15 +155,26 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-/* project 1 추가한 함수 */
-// 1.1 Alarm Clock
+/* project 1-1 추가한 함수 */
 void thread_sleep (int64_t ticks);
 void thread_awake (int64_t ticks);
 void update_next_ticks_to_awake (int64_t ticks);
 int64_t get_next_ticks_to_awake (void);
-// 1.2 Priority Scheduling
-bool thread_cmp_priority(struct list_elem *a, struct list_elem *b, void *aux UNUSED);
-bool thread_cmp_d_priority(struct list_elem *a, struct list_elem *b, void *aux UNUSED);
-void thread_preemption(void);
+
+/* project 1-2 추가 */
+void test_max_priority (void);
+bool cmp_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool cmp_donate_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+void donate_priority (void);
+void remove_with_lock (struct lock *lock);
+void refresh_priority (void);
+/* project 1-3 추가 */
+void mlfqs_priority (struct thread *t);
+void mlfqs_recent_cpu (struct thread *t);
+void mlfqs_load_avg (void);
+void mlfqs_increment (void);
+void mlfqs_recalc_cpu (void);
+void mlfqs_recalc_priority (void);
 
 #endif /* threads/thread.h */
+

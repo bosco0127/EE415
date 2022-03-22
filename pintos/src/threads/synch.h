@@ -41,10 +41,7 @@ void cond_wait (struct condition *, struct lock *);
 void cond_signal (struct condition *, struct lock *);
 void cond_broadcast (struct condition *, struct lock *);
 
-/* project 1 추가한 함수 */
-// 1.2 Priority Scheduling
-bool semaphore_cmp_priority(struct list_elem *a, struct list_elem *b, void *aux);
-void reset_priority(void);
+bool cmp_sem_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 
 /* Optimization barrier.
 

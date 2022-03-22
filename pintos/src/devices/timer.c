@@ -32,6 +32,24 @@ static void real_time_delay (int64_t num, int32_t denom);
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
+
+/* project 1 추가 및 수정 함수 */
+/* Sleeps for approximately TICKS timer ticks.  Interrupts must
+   be turned on. */
+void
+timer_sleep (int64_t ticks) 
+{
+  int64_t start = timer_ticks ();
+  ASSERT (intr_get_level () == INTR_ON);
+  // thread_sleep 함수 구현 후 이용
+  /* 이전에는 thread_yield 함수를 통해 ready list로 옮겼지만,
+  thread_sleep을 통해 sleep list로 이동 */
+  if (timer_elapsed(start)<ticks)
+  {
+    thread_sleep(start+ticks);
+  }
+}
+
 void
 timer_init (void) 
 {
@@ -82,25 +100,6 @@ int64_t
 timer_elapsed (int64_t then) 
 {
   return timer_ticks () - then;
-}
-
-/* Sleeps for approximately TICKS timer ticks.  Interrupts must
-   be turned on. */
-void
-timer_sleep (int64_t ticks) 
-{
-  int64_t start = timer_ticks ();
-
-  ASSERT (intr_get_level () == INTR_ON);
-  /*
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
-  */
-  // thread_sleep 함수 구현 후 이용
-  if (timer_elapsed(start)<ticks)
-  {
-    thread_sleep(start+ticks);
-  }
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -181,6 +180,20 @@ timer_interrupt (struct intr_frame *args UNUSED)
   thread_tick ();
   // 현재 ticks이 다음 실행해야할 스레드의 wakeup tick보다 크거나 같으면 그런 스레드를 모두 ready queue로 
   // 이동 (ready list) <- 여기서 thread awake 함수 이용
+  if(thread_mlfqs)
+  {
+    mlfqs_increment ();
+    if (ticks % 4 == 0)
+    {
+      mlfqs_recalc_priority();
+    }
+    if (ticks % TIMER_FREQ == 0) 
+    {
+      mlfqs_load_avg();
+      mlfqs_recalc_cpu ();
+    }
+  }
+
   int64_t next_thread_tick = get_next_ticks_to_awake();
   if (ticks >= next_thread_tick)
   {

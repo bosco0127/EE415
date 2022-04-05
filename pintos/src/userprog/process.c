@@ -37,9 +37,25 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
+  
+  char *token;
+  char *save_ptr;
+  char *argv[32]; // store parsed argument
+  int argc = 0; // argument count
+
+  for(argc = 0; argc < 20; argc++) 
+  {
+    token = strtok_r(file_name, " ", &save_ptr);
+    argv[argc] = token;
+    if(token == NULL) break;
+  }
+  argc--; // decrease by 1
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  printf("before TID\n");
+  tid = thread_create (argv[0], PRI_DEFAULT, start_process, fn_copy);
+  printf("after TID\n");
+  /* 2.1 수정 : file_name -> parsed_file_name으로 수정 */
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -59,13 +75,33 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+
+  // Project 2.1 Argument Parsing
+  char *token;
+  char *save_ptr;
+  char *argv[32]; // store parsed argument
+  int argc = 0; // argument count
+  for(token = strtok_r(file_name, " ", &save_ptr); token; 
+      token = strtok_r(NULL, " ", &save_ptr))
+      {
+        argv[argc] = token;
+        argc++;  
+      }
+  //argc--; // decrease by 1
   success = load (file_name, &if_.eip, &if_.esp);
-
   /* If load failed, quit. */
-  palloc_free_page (file_name);
-  if (!success) 
+  // palloc_free_page (file_name); -> ??
+  if (!success)
+  {
+    palloc_free_page (file_name);
     thread_exit ();
+  }
 
+  // store argument data
+  argument_stack(argv, argc, &if_.esp);
+
+  printf("out of argument stack\n");
+  hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -74,6 +110,51 @@ start_process (void *file_name_)
      and jump to it. */
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
   NOT_REACHED ();
+}
+
+
+void argument_stack(char **parse, int count, void **esp)
+{
+  for(int i = count-1; i >= 0; i--)
+  {
+    printf("parse[i] is %s\n", parse[i]);
+    int arg_len = strlen(parse[i]);
+    printf("arg len is %d\n", arg_len);
+    printf("i is %d\n", i);
+    for (int j = arg_len;j>-1;j--)
+    {
+      printf("j is %d\n", j);
+      char argv_char = parse[i][j];
+      (*esp)--;
+      **(char**)esp = argv_char;
+    }
+    parse[i] = *(char **)esp;
+  }
+  // word_align
+  while((PHYS_BASE-*esp)%4)
+  {
+    printf("align cnt\n");
+    *esp = *esp - sizeof(uint8_t);
+    **(uint8_t **)esp = 0;
+  }
+  // store argument address
+  for(int i = count; i>=0; i--)
+  {
+    printf("print value : %s\n", parse[i]);
+    *esp = *esp - sizeof(char *);
+    **(char***)esp = parse[i];
+  }
+  // store address of argv[0]
+  *esp = *esp - sizeof(char **);
+  **(char ***)esp = *esp+4;
+
+  // store value of argc
+  *esp = *esp - sizeof(int);
+  **(int **)esp = count;
+
+  // fake address
+  *esp = *esp - sizeof(void *);
+  **(void***)esp = 0;
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
@@ -88,6 +169,10 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  while(1)
+  {
+    // waiting
+  }
   return -1;
 }
 

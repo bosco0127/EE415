@@ -8,4 +8,8 @@ int process_wait (tid_t);
 void process_exit (void);
 void process_activate (void);
 
+// Project2
+// 2.1 Argument Parsing
+void argument_stack(char **parse, int count, void **esp);
+
 #endif /* userprog/process.h */

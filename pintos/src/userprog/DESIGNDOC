@@ -86,19 +86,36 @@ we do not need to worry about the race condition that we've mentioned at A3.
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+For system call and executing child process, we should add some members
+to struct thread. 
+1) struct thread * parent -> to know parent of child process
+2) struct file * fd[64] -> to use file discriptor
+3) struct file * running -> to check executing file and close it
+4) semaphore wait_load and wait_exit -> to wait for child to finish load and exit
+5) struct list child and list elem child_elem -> to save child process
+6) int exit_status -> to save status when each process exit
+
 >> B2: Describe how file descriptors are associated with open files.
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
 
 The file discriptors are unique to each open file for each process.
 Each process has it's own file descriptor table which points to the
-open file, and corresponding counter which would be increased/decreased
-each time a file is open/closed.
+open file.
 
 ---- ALGORITHMS ----
 
 >> B3: Describe your code for reading and writing user data from the
 >> kernel.
+
+reading : after check buffer is valid address(using check_address function),
+we check fd is 0, or bigger than 2. If input is stdin, we use input_getc function.
+If input is bigger than 2, we use file_read function. (stdout is error)
+
+writing : after check buffer is valid address(using check_address function),
+we check fd is 1, or bigger than 2. If input is stdout, we use putbuf function.
+If input is bigger than 2, we use file_write function. (stdin is error)
+
 
 >> B4: Suppose a system call causes a full page (4,096 bytes) of data
 >> to be copied from user space into the kernel.  What is the least
@@ -107,8 +124,22 @@ each time a file is open/closed.
 >> for a system call that only copies 2 bytes of data?  Is there room
 >> for improvement in these numbers, and how much?
 
+1) In case of full page
+The least number is 1 if the first inspection is valid and if it is
+contiguous memory chunk so that they could fit in a corresponding
+page.
+However, the greatest number is 4096 if all the data is separated to
+the different pages.
+
+2) In case of 2 bytes
+For the same reason the least number is 1 and the greatest number is 2.
+
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
+
+If process_wait function execute, I sema down the wait_exit semaphore,
+After child process sema up parent's wait_exit semaphore in thread_exit function,
+parents process can terminate
 
 >> B6: Any access to user program memory at a user-specified address
 >> can fail due to a bad pointer value.  Such accesses must cause the
@@ -124,12 +155,21 @@ each time a file is open/closed.
 >> paragraphs, describe the strategy or strategies you adopted for
 >> managing these issues.  Give an example.
 
+We use check address function to check this address is in user memory.
+Also, we modified page_fault function. When error occured and page_fault
+function executed, we check the memory and exit(-1).
+Also, we close all files when exit to free all allocated memories.
+
 ---- SYNCHRONIZATION ----
 
 >> B7: The "exec" system call returns -1 if loading the new executable
 >> fails, so it cannot return before the new executable has completed
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
+
+We use semaphore to check load is finished. When thread_create function is
+executed, we sema up parents process' wait_load sema. And after loading is finished
+we sema down that semaphore to check loading is finished.
 
 >> B8: Consider parent process P with child process C.  How do you
 >> ensure proper synchronization and avoid race conditions when P
@@ -138,16 +178,34 @@ each time a file is open/closed.
 >> terminates without waiting, before C exits?  After C exits?  Are
 >> there any special cases?
 
+We use semaphore to deal with this case. When P waits for C, we decrease
+the semaphore when we call wait function, and the semaphore is increased
+only when the child process exits. So, P would wait until C exits. If P
+calls wait after C exits, P has no child for waiting so it would not wait.
+Unless P terminates without waiting, all the resources are freed when the
+process exits. When P terminates first without waiting, I set P to terminate
+all the children. So the resources used by the childeren would be free.
+
 ---- RATIONALE ----
 
 >> B9: Why did you choose to implement access to user memory from the
 >> kernel in the way that you did?
 
+Briefly explain our way, we check address is valid and get argument from user memory to kernel.
+We also modified page fault function as we explained in previous answer.
+By this way, we can avoid illegal access to kernel memory and unmapped memory area.
+
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?
 
+We can avoid race condition because each process has it's own file descriptor.
+Also, because file descriptor has default size, we can easily check file and delete it 
+without resize descriptor array.
+
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+
+We didn't change mapping and use default tid_t to pid_t mapping. 
 
                SURVEY QUESTIONS
                ================
@@ -161,8 +219,12 @@ the quarter.
 >> In your opinion, was this assignment, or any one of the three problems
 >> in it, too easy or too hard?  Did it take too long or too little time?
 
+It was not easy. Especially for the signal.
+
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
+
+I understood the purpose of the semaphores.
 
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you

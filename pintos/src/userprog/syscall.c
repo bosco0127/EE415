@@ -423,10 +423,10 @@ void sigaction (int signum, void (*handler) (void))
   if ( cur->signum == 0) {
     return;
   }
-  if(handler != NULL) {
-    cur->parent->handler_address = &handler;
-  }
+  cur->parent->handler_address = signum;//(uint32_t)&handler;
   sema_up(&cur->parent->wait_sig);
+  //printf("child\n");
+  //printf("Signum: %d, Action: %d\n",signum, cur -> handler_address);
 }
 
 void sendsig (pid_t pid, int signum)
@@ -442,7 +442,7 @@ void sendsig (pid_t pid, int signum)
     }
   }
   sema_down(&cur->wait_sig);
-  printf("Signum: %d, Action: %d",signum, cur -> handler_address);
+  printf("Signum: %d, Action: %d\n",signum, cur -> handler_address);
 }
 
 void sched_yield ()

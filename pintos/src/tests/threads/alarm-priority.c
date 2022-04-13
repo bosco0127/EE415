@@ -11,7 +11,7 @@
 
 static thread_func alarm_priority_thread;
 static int64_t wake_time;
-static struct semaphore wait_sema;
+static struct semaphore wait_child;
 
 void
 test_alarm_priority (void) 
@@ -22,7 +22,7 @@ test_alarm_priority (void)
   ASSERT (!thread_mlfqs);
 
   wake_time = timer_ticks () + 5 * TIMER_FREQ;
-  sema_init (&wait_sema, 0);
+  sema_init (&wait_child, 0);
   
   for (i = 0; i < 10; i++) 
     {
@@ -35,7 +35,7 @@ test_alarm_priority (void)
   thread_set_priority (PRI_MIN);
 
   for (i = 0; i < 10; i++)
-    sema_down (&wait_sema);
+    sema_down (&wait_child);
 }
 
 static void
@@ -54,5 +54,5 @@ alarm_priority_thread (void *aux UNUSED)
   /* Print a message on wake-up. */
   msg ("Thread %s woke up.", thread_name ());
 
-  sema_up (&wait_sema);
+  sema_up (&wait_child);
 }

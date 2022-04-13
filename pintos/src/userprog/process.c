@@ -30,6 +30,9 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
+  // Project 2
+  struct list_elem *e;
+  struct thread *t;
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -37,28 +40,67 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
-  
+  char cpy[100];
+  int cnt = 99;
+  while(cnt>-1)
+  {
+    cpy[cnt]=0;
+    cnt--;
+  }
+  strlcpy(cpy, file_name, strlen(file_name)+1);
   char *token;
   char *save_ptr;
-  char *argv[32]; // store parsed argument
-  int argc = 0; // argument count
-
-  for(argc = 0; argc < 20; argc++) 
+  token = strtok_r(cpy, " ", &save_ptr);
+  if(filesys_open(token)==NULL)
   {
-    token = strtok_r(file_name, " ", &save_ptr);
-    argv[argc] = token;
-    if(token == NULL) break;
+    return -1;
   }
-  argc--; // decrease by 1
-
+  //printf("tokenprint : %s\n", token);
   /* Create a new thread to execute FILE_NAME. */
-  printf("before TID\n");
-  tid = thread_create (argv[0], PRI_DEFAULT, start_process, fn_copy);
-  printf("after TID\n");
+  tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
+  sema_down(&thread_current()->wait_load);
   /* 2.1 수정 : file_name -> parsed_file_name으로 수정 */
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+    palloc_free_page (fn_copy);
+  // 중간에 child가 종료되었을 경우 -1로 리턴.
+  t = get_child_process(tid);
+  if(t->exit_status == -1) {
+    //palloc_free_page (fn_copy);
+    tid = process_wait(tid);
+    //palloc_free_page (fn_copy);
+  }
   return tid;
+}
+
+struct thread *get_child_process (int pid)
+{
+  struct list_elem* e;
+  for (e = list_begin(&thread_current()->child); e != list_end(&thread_current()->child); e = list_next(e)) 
+  {
+    struct thread *t = list_entry(e, struct thread, child_elem);
+    if (t->tid == pid) 
+    {
+        return t;
+    }
+  }
+  return NULL;
+}
+
+void remove_child_process (struct thread *cp)
+{
+  list_remove(&(cp->child_elem));
+}
+
+void remove_all_child_processes (void) 
+{
+  struct thread *t = thread_current();
+  struct list_elem *e;
+  
+  for (e = list_begin(&t->child);e != list_end(&t->child); e = list_next(e))
+  {
+    struct thread *cp = list_entry(e, struct thread, elem);
+    list_remove(&cp->child_elem); //remove child process
+  }
 }
 
 /* A thread function that loads a user process and starts it
@@ -89,19 +131,21 @@ start_process (void *file_name_)
       }
   //argc--; // decrease by 1
   success = load (file_name, &if_.eip, &if_.esp);
+  sema_up(&thread_current()->parent->wait_load);
+  if(success)
+  {
+    argument_stack(argv, argc, &if_.esp);
+  }
   /* If load failed, quit. */
-  // palloc_free_page (file_name); -> ??
+  //palloc_free_page (file_name); --> ?? (나중에)
+  palloc_free_page (file_name);
   if (!success)
   {
-    palloc_free_page (file_name);
-    thread_exit ();
+    thread_exit();
   }
 
   // store argument data
-  argument_stack(argv, argc, &if_.esp);
-
-  printf("out of argument stack\n");
-  hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
+  //hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -117,13 +161,13 @@ void argument_stack(char **parse, int count, void **esp)
 {
   for(int i = count-1; i >= 0; i--)
   {
-    printf("parse[i] is %s\n", parse[i]);
+    //printf("parse[i] is %s\n", parse[i]);
     int arg_len = strlen(parse[i]);
-    printf("arg len is %d\n", arg_len);
-    printf("i is %d\n", i);
+    //printf("arg len is %d\n", arg_len);
+    //printf("i is %d\n", i);
     for (int j = arg_len;j>-1;j--)
     {
-      printf("j is %d\n", j);
+      //printf("j is %d\n", j);
       char argv_char = parse[i][j];
       (*esp)--;
       **(char**)esp = argv_char;
@@ -133,14 +177,14 @@ void argument_stack(char **parse, int count, void **esp)
   // word_align
   while((PHYS_BASE-*esp)%4)
   {
-    printf("align cnt\n");
+    //printf("align cnt\n");
     *esp = *esp - sizeof(uint8_t);
     **(uint8_t **)esp = 0;
   }
   // store argument address
   for(int i = count; i>=0; i--)
   {
-    printf("print value : %s\n", parse[i]);
+    //printf("print value : %s\n", parse[i]);
     *esp = *esp - sizeof(char *);
     **(char***)esp = parse[i];
   }
@@ -167,11 +211,18 @@ void argument_stack(char **parse, int count, void **esp)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid)
 {
-  while(1)
+
+  struct list_elem* e;
+  struct thread* t = get_child_process(child_tid);
+  int exit_status;
+  if(t)
   {
-    // waiting
+    sema_down(&thread_current()->wait_exit);
+    exit_status = t->exit_status;
+    remove_child_process(t);
+    return exit_status;
   }
   return -1;
 }
@@ -182,7 +233,14 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-
+  for (int i = 0; i < 64; i++) {
+      if (cur->fd[i] != NULL) {
+          close(i);
+      }   
+  } 
+  file_close(cur->running);
+  // remove all child
+  remove_all_child_processes();
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -290,6 +348,8 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
+struct lock filesys_lock;
+//lock_init(&filesys_lock);
 bool
 load (const char *file_name, void (**eip) (void), void **esp) 
 {
@@ -307,13 +367,16 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
+  lock_acquire(&filesys_lock);
   file = filesys_open (file_name);
   if (file == NULL) 
     {
+      lock_release(&filesys_lock);
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
-
+  t->running = file;
+  file_deny_write (file);
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -397,7 +460,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  lock_release(&filesys_lock);
+  //file_close (file);
   return success;
 }
 

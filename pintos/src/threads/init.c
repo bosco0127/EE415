@@ -76,6 +76,7 @@ int main (void) NO_RETURN;
 int
 main (void)
 {
+  
   char **argv;
 
   /* Clear BSS. */  

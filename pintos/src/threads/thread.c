@@ -96,6 +96,26 @@ thread_init (void)
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
+  #ifdef USERPROG
+  struct thread *t = initial_thread;
+  int cnt;
+  for(cnt=0;cnt<64;cnt++)
+  {
+    t->fd[cnt]=NULL;
+  }
+  t->fd[0]=0;
+  t->fd[1]=1;
+  t->parent = running_thread();
+  t->signum = 0;
+  t->handler_address = 0;
+  sema_init(&t->wait_load, 0);
+  sema_init(&t->wait_exit, 0);
+  sema_init(&t->wait_sig, 0);
+  sema_init(&t->load_lock, 0);
+  t->load = 0;
+  t->exit = 0;
+  list_push_back(&running_thread()->child, &t->child_elem);
+#endif
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
 }
@@ -181,6 +201,24 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
+  #ifdef USERPROG
+  int cnt;
+  for(cnt=0;cnt<64;cnt++)
+  {
+    t->fd[cnt]=NULL;
+  }
+  t->fd[0] = 0;
+  t->fd[1] = 1;
+  t->parent = running_thread();
+  sema_init(&t->wait_load, 0);
+  sema_init(&t->wait_exit, 0);
+  sema_init(&t->wait_sig, 0);
+  sema_init(&t->load_lock, 0);
+  t->load = 0;
+  t->exit = 0;
+  t->signum = 0;
+  list_push_back(&running_thread()->child, &t->child_elem);
+#endif
   tid = t->tid = allocate_tid ();
 
   /* Stack frame for kernel_thread(). */
@@ -290,10 +328,29 @@ thread_exit (void)
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
+#ifdef USERPROG
+  thread_current()->exit = 1;
+  sema_up(&thread_current()->parent->wait_exit);
+#endif  
   list_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
+}
+
+// check the pid is alive.
+int is_alive (int pid){
+  struct list_elem *e;
+  for (e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e))
+  {
+    struct thread *t = list_entry (e, struct thread, allelem);
+    if (t->tid == pid)
+    {
+      // pid matches return true
+      return 1;
+    }
+  }
+  return 0; // no tid matches then thread is no longer alive
 }
 
 /* Yields the CPU.  The current thread is not put to sleep and
@@ -463,10 +520,15 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
+//printf("\n%s\n\n", t->name);
+
+#ifdef USERPROG
+  sema_init(&t->load_lock, 0);
+  list_init(&t->child);
+#endif
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -538,7 +600,7 @@ thread_schedule_tail (struct thread *prev)
   if (prev != NULL && prev->status == THREAD_DYING && prev != initial_thread) 
     {
       ASSERT (prev != cur);
-      palloc_free_page (prev);
+      //palloc_free_page (prev);
     }
 }
 

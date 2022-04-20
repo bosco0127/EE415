@@ -265,6 +265,7 @@ exit (int status)
       cp->exit_status = -1;
     }
   }
+  //list_remove(&(cur->child_elem));
   printf("%s: exit(%d)\n", thread_name(), status);
   thread_exit();
 }
@@ -278,7 +279,9 @@ exec (const char *file)
 int
 wait (pid_t pid)
 {
-  return process_wait(pid);
+  int wait_result = process_wait(pid);
+  //printf("status:%d\n", wait_result);
+  return wait_result;
 }
 
 bool
@@ -420,13 +423,7 @@ close (int fd)
 void sigaction (int signum, void (*handler) (void))
 {
   struct thread *cur = thread_current();
-  if ( cur->signum == 0) {
-    return;
-  }
-  cur->parent->handler_address = signum;//(uint32_t)&handler;
-  sema_up(&cur->parent->wait_sig);
-  //printf("child\n");
-  //printf("Signum: %d, Action: %d\n",signum, cur -> handler_address);
+  cur->handler_address[signum-1] = handler;
 }
 
 void sendsig (pid_t pid, int signum)
@@ -441,8 +438,10 @@ void sendsig (pid_t pid, int signum)
       break;
     }
   }
-  sema_down(&cur->wait_sig);
-  printf("Signum: %d, Action: %d\n",signum, cur -> handler_address);
+  //sema_down(&cur->wait_sig);
+  if ( t -> handler_address[signum-1] != 0) {
+    printf("Signum: %d, Action: %p\n",signum, (int *)t -> handler_address[signum-1]);
+  }
 }
 
 void sched_yield ()

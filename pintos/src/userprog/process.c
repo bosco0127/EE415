@@ -229,12 +229,14 @@ process_wait (tid_t child_tid)
   int exit_status;
   if(t)
   {
-    if(t->exit_status != -1) {
+    /*if(t->exit_status != -1) {
       //sema_down(&thread_current()->wait_exit);
       sema_down(&t->wait_exit);
-    }
+    }*/
+    sema_down(&t->wait_exit);
     exit_status = t->exit_status;
     remove_child_process(t);
+    palloc_free_page (t);
     return exit_status;
   }
   return -1;

@@ -41,24 +41,28 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
   char cpy[100];
+  //char token_cpy[100];
   int cnt = 99;
   while(cnt>-1)
   {
     cpy[cnt]=0;
+    //token_cpy[cnt]=0;
     cnt--;
   }
   strlcpy(cpy, file_name, strlen(file_name)+1);
   char *token;
   char *save_ptr;
   token = strtok_r(cpy, " ", &save_ptr);
-  if(filesys_open(token)==NULL)
+  //strlcpy(token_cpy, token, strlen(token)+1);
+  /*if(filesys_open(token)==NULL)
   {
     return -1;
-  }
+  }*/
   //printf("tokenprint : %s\n", token);
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
   sema_down(&thread_current()->wait_load);
+  //filesys_close(token);
   /* 2.1 수정 : file_name -> parsed_file_name으로 수정 */
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
@@ -99,6 +103,7 @@ void remove_all_child_processes (void)
   for (e = list_begin(&t->child);e != list_end(&t->child); e = list_next(e))
   {
     struct thread *cp = list_entry(e, struct thread, elem);
+    cp->exit_status = -1;
     list_remove(&cp->child_elem); //remove child process
   }
 }
@@ -131,7 +136,9 @@ start_process (void *file_name_)
       }
   //argc--; // decrease by 1
   success = load (file_name, &if_.eip, &if_.esp);
-  sema_up(&thread_current()->parent->wait_load);
+  if(!success) {
+    thread_current()->exit_status = -1;
+  }
   if(success)
   {
     argument_stack(argv, argc, &if_.esp);
@@ -139,9 +146,12 @@ start_process (void *file_name_)
   /* If load failed, quit. */
   //palloc_free_page (file_name); --> ?? (나중에)
   palloc_free_page (file_name);
+  sema_up(&thread_current()->parent->wait_load);
   if (!success)
   {
-    thread_exit();
+    //thread_current()->exit_status = -1;
+    //thread_exit();
+    exit(-1);
   }
 
   // store argument data
@@ -219,7 +229,10 @@ process_wait (tid_t child_tid)
   int exit_status;
   if(t)
   {
-    sema_down(&thread_current()->wait_exit);
+    if(t->exit_status != -1) {
+      //sema_down(&thread_current()->wait_exit);
+      sema_down(&t->wait_exit);
+    }
     exit_status = t->exit_status;
     remove_child_process(t);
     return exit_status;
@@ -371,7 +384,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   file = filesys_open (file_name);
   if (file == NULL) 
     {
-      lock_release(&filesys_lock);
+      //lock_release(&filesys_lock);
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }

@@ -107,7 +107,9 @@ thread_init (void)
   t->fd[1]=1;
   t->parent = running_thread();
   t->signum = 0;
-  t->handler_address = 0;
+  for(int i=0; i<10; i++) {
+    t->handler_address[i] = 0;
+  }
   sema_init(&t->wait_load, 0);
   sema_init(&t->wait_exit, 0);
   sema_init(&t->wait_sig, 0);
@@ -201,7 +203,7 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
-  #ifdef USERPROG
+  /*#ifdef USERPROG
   int cnt;
   for(cnt=0;cnt<64;cnt++)
   {
@@ -218,7 +220,7 @@ thread_create (const char *name, int priority,
   t->exit = 0;
   t->signum = 0;
   list_push_back(&running_thread()->child, &t->child_elem);
-#endif
+#endif*/
   tid = t->tid = allocate_tid ();
 
   /* Stack frame for kernel_thread(). */
@@ -320,17 +322,18 @@ thread_exit (void)
 {
   ASSERT (!intr_context ());
 
-#ifdef USERPROG
+/*#ifdef USERPROG
   process_exit ();
-#endif
+#endif*/
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
 #ifdef USERPROG
+  process_exit ();
   thread_current()->exit = 1;
-  sema_up(&thread_current()->parent->wait_exit);
+  sema_up(&thread_current()->wait_exit);
 #endif  
   list_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
@@ -339,7 +342,7 @@ thread_exit (void)
 }
 
 // check the pid is alive.
-int is_alive (int pid){
+/*int is_alive (int pid){
   struct list_elem *e;
   for (e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e))
   {
@@ -351,7 +354,7 @@ int is_alive (int pid){
     }
   }
   return 0; // no tid matches then thread is no longer alive
-}
+}*/
 
 /* Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
@@ -526,8 +529,23 @@ init_thread (struct thread *t, const char *name, int priority)
 //printf("\n%s\n\n", t->name);
 
 #ifdef USERPROG
-  sema_init(&t->load_lock, 0);
   list_init(&t->child);
+  int cnt;
+  for(cnt=0;cnt<64;cnt++)
+  {
+    t->fd[cnt]=NULL;
+  }
+  t->fd[0] = 0;
+  t->fd[1] = 1;
+  t->parent = running_thread();
+  sema_init(&t->wait_load, 0);
+  sema_init(&t->wait_exit, 0);
+  sema_init(&t->wait_sig, 0);
+  sema_init(&t->load_lock, 0);
+  t->load = 0;
+  t->exit = 0;
+  t->signum = 0;
+  list_push_back(&running_thread()->child, &t->child_elem);
 #endif
 }
 

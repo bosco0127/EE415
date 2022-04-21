@@ -246,14 +246,16 @@ exit (int status)
 {
   struct thread *cur = thread_current();
   struct list_elem *e;
-  cur->exit_status = status;
+  if(cur->exit_status != -1) {
+    cur->exit_status = status;
+  }
   // close open file.
-  for (int i = 3; i < 64; i++) {
+  /*for (int i = 3; i < 64; i++) {
       if (cur->fd[i] != NULL) {
         close(i);
       }
-    }
-  if (is_alive(cur->parent->tid) || !list_empty(&cur->child))
+    }*/
+  /*if (is_alive(cur->parent->tid) || !list_empty(&cur->child))
   {
     if (status < 0)
     {
@@ -264,9 +266,9 @@ exit (int status)
       struct thread *cp = list_entry(e, struct thread, elem);
       cp->exit_status = -1;
     }
-  }
+  }*/
   //list_remove(&(cur->child_elem));
-  printf("%s: exit(%d)\n", thread_name(), status);
+  printf("%s: exit(%d)\n", thread_name(), cur->exit_status);
   thread_exit();
 }
 
@@ -438,7 +440,6 @@ void sendsig (pid_t pid, int signum)
       break;
     }
   }
-  //sema_down(&cur->wait_sig);
   if ( t -> handler_address[signum-1] != 0) {
     printf("Signum: %d, Action: %p\n",signum, (int *)t -> handler_address[signum-1]);
   }

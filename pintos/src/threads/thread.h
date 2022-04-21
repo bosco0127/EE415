@@ -112,7 +112,7 @@ struct thread
     bool exit;
     int exit_status;
     int signum;
-    int handler_address;
+    int handler_address[10];
    
 #endif
 
@@ -157,6 +157,6 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 // project2
-int is_alive (int pid);
+//int is_alive (int pid);
 
 #endif /* threads/thread.h */

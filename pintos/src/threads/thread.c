@@ -96,10 +96,10 @@ thread_init (void)
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
-  #ifdef USERPROG
+  /*#ifdef USERPROG
   struct thread *t = initial_thread;
   int cnt;
-  for(cnt=0;cnt<64;cnt++)
+  for(cnt=0;cnt<10;cnt++)
   {
     t->fd[cnt]=NULL;
   }
@@ -117,7 +117,7 @@ thread_init (void)
   t->load = 0;
   t->exit = 0;
   list_push_back(&running_thread()->child, &t->child_elem);
-#endif
+#endif*/
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
 }
@@ -203,24 +203,6 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
-  /*#ifdef USERPROG
-  int cnt;
-  for(cnt=0;cnt<64;cnt++)
-  {
-    t->fd[cnt]=NULL;
-  }
-  t->fd[0] = 0;
-  t->fd[1] = 1;
-  t->parent = running_thread();
-  sema_init(&t->wait_load, 0);
-  sema_init(&t->wait_exit, 0);
-  sema_init(&t->wait_sig, 0);
-  sema_init(&t->load_lock, 0);
-  t->load = 0;
-  t->exit = 0;
-  t->signum = 0;
-  list_push_back(&running_thread()->child, &t->child_elem);
-#endif*/
   tid = t->tid = allocate_tid ();
 
   /* Stack frame for kernel_thread(). */
@@ -530,8 +512,10 @@ init_thread (struct thread *t, const char *name, int priority)
 
 #ifdef USERPROG
   list_init(&t->child);
+  //t->fd = (struct file **)malloc(10*sizeof(struct file *));
   int cnt;
   for(cnt=0;cnt<64;cnt++)
+  //for(cnt=0;cnt<10;cnt++)
   {
     t->fd[cnt]=NULL;
   }

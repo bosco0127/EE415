@@ -103,8 +103,9 @@ void remove_all_child_processes (void)
   for (e = list_begin(&t->child);e != list_end(&t->child); e = list_next(e))
   {
     struct thread *cp = list_entry(e, struct thread, elem);
-    cp->exit_status = -1;
-    list_remove(&cp->child_elem); //remove child process
+    //cp->exit_status = -1;
+    wait(cp->tid);
+    //list_remove(&cp->child_elem); //remove child process
   }
 }
 
@@ -248,12 +249,15 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-  for (int i = 0; i < 64; i++) {
+  for (int i = 2; i < 64; i++) {
+  //for (int i = 2; i < 10; i++) {
       if (cur->fd[i] != NULL) {
-          close(i);
+          //close(i);
+          file_close(cur->fd[i]);
       }   
-  } 
+  }
   file_close(cur->running);
+  //free(cur->fd);
   // remove all child
   remove_all_child_processes();
   /* Destroy the current process's page directory and switch back
@@ -375,6 +379,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   bool success = false;
   int i;
 
+  lock_acquire(&filesys_lock);
+
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
@@ -382,7 +388,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
-  lock_acquire(&filesys_lock);
+  //lock_acquire(&filesys_lock);
   file = filesys_open (file_name);
   if (file == NULL) 
     {

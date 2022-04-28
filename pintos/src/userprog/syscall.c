@@ -200,10 +200,6 @@ syscall_handler (struct intr_frame *f UNUSED)
       sched_yield();
     break;
   }
-  //printf ("system call\n");
-  //get_argument(esp, arg, 1);
-  //printf("%d\n", *(uint32_t *)esp);
-  //thread_exit ();
 }
 
 // 유저 영역을 벗어났는지 확인
@@ -249,25 +245,6 @@ exit (int status)
   if(cur->exit_status != -1) {
     cur->exit_status = status;
   }
-  // close open file.
-  /*for (int i = 3; i < 64; i++) {
-      if (cur->fd[i] != NULL) {
-        close(i);
-      }
-    }*/
-  /*if (is_alive(cur->parent->tid) || !list_empty(&cur->child))
-  {
-    if (status < 0)
-    {
-      status = -1;
-    }
-    for (e = list_begin(&cur->child);e != list_end(&cur->child); e = list_next(e))
-    {
-      struct thread *cp = list_entry(e, struct thread, elem);
-      cp->exit_status = -1;
-    }
-  }*/
-  //list_remove(&(cur->child_elem));
   printf("%s: exit(%d)\n", thread_name(), cur->exit_status);
   thread_exit();
 }
@@ -324,6 +301,7 @@ int open (const char *file) {
       ret = -1;
   } else {
     for (i = 3; i < 64; i++) {
+    //for (i = 3; i < 10; i++) {
       if (thread_current()->fd[i] == NULL) {
         thread_current()->fd[i] = fp;
         ret = i;
@@ -418,7 +396,7 @@ close (int fd)
   {
     exit(-1);
   }
-  fp = NULL;
+  thread_current()->fd[fd] = NULL;
   return file_close(fp);
 }
 

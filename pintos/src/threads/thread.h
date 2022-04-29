@@ -106,14 +106,9 @@ struct thread
     struct file* running;
     struct semaphore wait_load;
     struct semaphore wait_exit;
-    struct semaphore wait_sig;
-    struct semaphore load_lock;
     struct list child;
     struct list_elem child_elem;
-    bool load;
-    bool exit;
     int exit_status;
-    int signum;
     int handler_address[10];
    
 #endif

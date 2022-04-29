@@ -53,12 +53,6 @@ process_execute (const char *file_name)
   char *token;
   char *save_ptr;
   token = strtok_r(cpy, " ", &save_ptr);
-  //strlcpy(token_cpy, token, strlen(token)+1);
-  /*if(filesys_open(token)==NULL)
-  {
-    return -1;
-  }*/
-  //printf("tokenprint : %s\n", token);
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
   sema_down(&thread_current()->wait_load);
@@ -104,7 +98,7 @@ void remove_all_child_processes (void)
   {
     struct thread *cp = list_entry(e, struct thread, elem);
     //cp->exit_status = -1;
-    wait(cp->tid);
+    process_wait(cp->tid);
     //list_remove(&cp->child_elem); //remove child process
   }
 }

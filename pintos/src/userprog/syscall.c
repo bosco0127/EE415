@@ -414,7 +414,6 @@ void sendsig (pid_t pid, int signum)
   for (e = list_begin(&cur->child); e != list_end(&cur->child); e = list_next(e)) {
     t = list_entry(e, struct thread, child_elem);
     if(t->tid == pid) {
-      t->signum = signum;
       break;
     }
   }

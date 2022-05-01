@@ -7,7 +7,7 @@
 #include "devices/shutdown.h"
 #include "filesys/filesys.h"
 #include "filesys/off_t.h"
-
+#include "vm/page.h"
 
 struct file
   {
@@ -92,12 +92,8 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
-  //printf("herereererwerw\n");
   int int_num = *(int32_t *)f->esp;
-  //printf("here1\n");
   void *esp = f->esp;
-  //printf("%d\n", int_num);
-  //printf("here2\n");
   int arg[5];
   // arg 초기화
   int cnt = 4;
@@ -106,7 +102,7 @@ syscall_handler (struct intr_frame *f UNUSED)
     arg[cnt] = 0;
     cnt--;
   }
-    //hex_dump(f->esp, f->esp, 100, 1); 
+  check_address(esp);
   switch (int_num)
   {
   case SYS_HALT:
@@ -115,84 +111,76 @@ syscall_handler (struct intr_frame *f UNUSED)
     break;
   case SYS_EXIT:
       // arg = 1
-      check_address(esp+4);
       get_argument(esp, arg, 1);
       exit((int)*(uint32_t *)arg[0]);
     break;
   case SYS_EXEC:
       // arg = 1
-      check_address(esp+4);
       get_argument(esp, arg, 1);
+      check_valid_string((const void *)arg[0]);
       f->eax = exec((const char *)*(uint32_t *)arg[0]);
     break;
   case SYS_WAIT:
       // arg = 1
-      check_address(esp+4);
       get_argument(esp, arg, 1);
       f->eax = wait((pid_t)*(uint32_t*)arg[0]);
     break;
   case SYS_CREATE:
       // arg = 2;
-      check_address(esp+4);
       get_argument(esp, arg, 2);
+      check_valid_string((const void *)arg[0]);
       f->eax = create((const char *)*(uint32_t *)arg[0], (unsigned)*(uint32_t *)arg[1]);
     break;
   case SYS_REMOVE:
       // arg = 1
-      check_address(esp+4);
       get_argument(esp, arg, 1);
+      check_valid_string((const void *)arg[0]);
       f->eax = remove((const char *)*(uint32_t *)arg[0]);
     break;
   case SYS_OPEN:
       // arg = 1
-      check_address(esp+4);
       get_argument(esp, arg, 1);
+      check_valid_string((const void *)arg[0]);
       f->eax = open((const char*)*(uint32_t *)arg[0]);
     break;
   case SYS_FILESIZE:
       // arg = 1
-      check_address(esp+4);
       get_argument(esp, arg, 1);
       f->eax = filesize((int)*(uint32_t*)arg[0]);
     break;
   case SYS_READ:
       // arg = 3
-      check_address(esp+4);
       get_argument(esp, arg, 3);
+      check_valid_buffer((void *)arg[1], (unsigned)arg[2], true);
       f->eax = read((int)*(uint32_t *)arg[0], (void *)*(uint32_t*)arg[1], (unsigned)*(uint32_t*)arg[2]);
     break;
   case SYS_WRITE:
       // arg = 3
-      check_address(esp+4);
       get_argument(esp, arg, 3);
+      check_valid_buffer((void *)arg[1], (unsigned)arg[2], false);
       f->eax = write((int)*(uint32_t *)arg[0], (const void *)*(uint32_t*)arg[1], *(uint32_t*)arg[2]);
     break;
   case SYS_SEEK:
       // arg = 2
-      check_address(esp+4);
       get_argument(esp, arg, 2);
       seek((int)*(uint32_t*)arg[0], (unsigned)*(uint32_t*)arg[1]);
     break;
   case SYS_TELL:
       // arg = 1
-      check_address(esp+4);
       get_argument(esp, arg, 1);
       f->eax = tell((int)*(uint32_t*)arg[0]);
     break;
   case SYS_CLOSE:
       // arg = 1
-      check_address(esp+4);
       get_argument(esp, arg, 1);
       close((int)*(uint32_t*)arg[0]);
     break;
     
   case SYS_SIGACTION:
-      check_address(esp+4);
       get_argument(esp, arg, 2);
       sigaction((int)*(uint32_t *)arg[0], (void *)*(uint32_t *)arg[1]);
     break;
   case SYS_SENDSIG:
-      check_address(esp+4);
       get_argument(esp, arg, 2);
       sendsig((pid_t)*(uint32_t *)arg[0], (int)*(uint32_t *)arg[1]);
     break;
@@ -203,15 +191,57 @@ syscall_handler (struct intr_frame *f UNUSED)
 }
 
 // 유저 영역을 벗어났는지 확인
-void check_address(void *addr)
+struct vm_entry *check_address(void *addr)
 {
-  if(!is_user_vaddr(addr))
+  /* Exit if addr is not in user space */
+  if(addr < (void *)0x08048000 || addr >= (void *)0xc0000000)
   {
-    //exit 아직 구현 안되서 에러남
     exit(-1);
-    //printf("error\n");
+  }
+  struct vm_entry *vme;
+
+  /* find vme from hashtable */
+  vme = find_vme(addr);
+
+  /* check vme is exist */
+  if(vme == NULL){
+    exit(-1);
+  }
+
+  return vme;
+}
+
+// Check buffer address is valid
+void check_valid_buffer(void *buffer, unsigned size, bool to_write){
+  struct vm_entry *vme;
+  char *check_addr = (char *)buffer;
+
+  /* check all addresses from buffer to buffer+size-1 */
+  for(unsigned i=0; i<size; i++){
+    /* Get vm_entry from check_address */
+    vme = check_address((void *)check_addr);
+    
+    /* Check writable if to_write is true */
+    if(to_write){
+      if(!vme->writable){
+        exit(-1);
+      }
+    }
+
+    /* Keep Checking for the rest of them */
+    check_addr++;
   }
 }
+
+// Check if string address is valid
+void check_valid_string(const void *str){
+  char *check_addr = (char *)str;
+  do{
+    check_address((void *)check_addr);
+    check_addr++;
+  }while(*check_addr != '\0');
+}
+
 // 수정 가능성 있음
 void get_argument(void *esp, int *arg, int count)
 {
@@ -266,7 +296,6 @@ wait (pid_t pid)
 bool
 create (const char *file, unsigned initial_size)
 {
-  check_address(file);
   if(file==NULL)
   {
     exit(-1);
@@ -278,7 +307,6 @@ create (const char *file, unsigned initial_size)
 bool
 remove (const char *file)
 {
-  check_address(file);
   if(file==NULL)
   {
     exit(-1);
@@ -294,7 +322,6 @@ int open (const char *file) {
   if (file == NULL) {
       exit(-1);
   }
-  check_address(file);
   lock_acquire(&filesys_lock);
   fp = filesys_open(file);
   if (fp == NULL) {
@@ -327,7 +354,6 @@ int read (int fd, void* buffer, unsigned size) {
   int i;
   int ret;
   lock_acquire(&filesys_lock);
-  check_address(buffer);
   if (fd == 0) {
     for (i = 0; i < size; i ++) {
       if (input_getc() == '\0') {
@@ -349,7 +375,6 @@ int read (int fd, void* buffer, unsigned size) {
 int write (int fd, const void *buffer, unsigned size) {
 
   int ret = -1;
-  check_address(buffer);
   lock_acquire(&filesys_lock);
   if (fd == 1) {
     putbuf(buffer, size);

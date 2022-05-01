@@ -6,6 +6,7 @@
 #include "threads/thread.h"
 // add
 #include "threads/vaddr.h"
+#include "vm/page.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -128,6 +129,8 @@ page_fault (struct intr_frame *f)
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
+  struct vm_entry *vme; // pointer to vm_entry
+  bool load_success = false; // true: if load succeed, else false.
 
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
@@ -149,10 +152,23 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-  // user stack 확인 (추가)
-  if(!user || is_kernel_vaddr(fault_addr) || not_present) {
-  exit(-1);
-   }
+
+  /* Deleted in Project 3 */
+  /*if(!user || is_kernel_vaddr(fault_addr) || not_present) {
+    exit(-1);
+  }*/
+
+  /* if read-only page: exit */
+  if(!not_present){
+    exit(-1);
+  }
+
+  // Check fault_addr.
+  vme = check_address(fault_addr);
+
+  // Call handle_mm_fault().
+
+  // Check if loading by handle_mm_fault is succeed.
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to

@@ -257,7 +257,7 @@ process_exit (void)
       }   
   }
   file_close(cur->running);
-  //free(cur->fd);
+  palloc_free_page(cur->fd);//free(cur->fd);
   // remove all child
   remove_all_child_processes();
   /* Destroy the current process's page directory and switch back

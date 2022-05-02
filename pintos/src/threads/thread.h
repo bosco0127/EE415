@@ -100,9 +100,9 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
     
     struct thread* parent;
-    struct file* fd[64];
+    //struct file* fd[64];
     //struct file* fd[10];
-    //struct file** fd;
+    struct file** fd;
     struct file* running;
     struct semaphore wait_load;
     struct semaphore wait_exit;

@@ -117,7 +117,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   case SYS_EXEC:
       // arg = 1
       get_argument(esp, arg, 1);
-      check_valid_string((const void *)arg[0]);
+      check_valid_string((const void *)*(uint32_t *)arg[0]);
       f->eax = exec((const char *)*(uint32_t *)arg[0]);
     break;
   case SYS_WAIT:
@@ -128,19 +128,19 @@ syscall_handler (struct intr_frame *f UNUSED)
   case SYS_CREATE:
       // arg = 2;
       get_argument(esp, arg, 2);
-      check_valid_string((const void *)arg[0]);
+      check_valid_string((const void *)*(uint32_t *)arg[0]);
       f->eax = create((const char *)*(uint32_t *)arg[0], (unsigned)*(uint32_t *)arg[1]);
     break;
   case SYS_REMOVE:
       // arg = 1
       get_argument(esp, arg, 1);
-      check_valid_string((const void *)arg[0]);
+      check_valid_string((const void *)*(uint32_t *)arg[0]);
       f->eax = remove((const char *)*(uint32_t *)arg[0]);
     break;
   case SYS_OPEN:
       // arg = 1
       get_argument(esp, arg, 1);
-      check_valid_string((const void *)arg[0]);
+      check_valid_string((const void *)*(uint32_t *)arg[0]);
       f->eax = open((const char*)*(uint32_t *)arg[0]);
     break;
   case SYS_FILESIZE:
@@ -151,13 +151,13 @@ syscall_handler (struct intr_frame *f UNUSED)
   case SYS_READ:
       // arg = 3
       get_argument(esp, arg, 3);
-      check_valid_buffer((void *)arg[1], (unsigned)arg[2], true);
+      check_valid_buffer((void *)*(uint32_t*)arg[1], (unsigned)*(uint32_t*)arg[2], true);
       f->eax = read((int)*(uint32_t *)arg[0], (void *)*(uint32_t*)arg[1], (unsigned)*(uint32_t*)arg[2]);
     break;
   case SYS_WRITE:
       // arg = 3
       get_argument(esp, arg, 3);
-      check_valid_buffer((void *)arg[1], (unsigned)arg[2], false);
+      check_valid_buffer((void *)*(uint32_t*)arg[1], (unsigned)*(uint32_t*)arg[2], false);
       f->eax = write((int)*(uint32_t *)arg[0], (const void *)*(uint32_t*)arg[1], *(uint32_t*)arg[2]);
     break;
   case SYS_SEEK:
@@ -215,9 +215,10 @@ struct vm_entry *check_address(void *addr)
 void check_valid_buffer(void *buffer, unsigned size, bool to_write){
   struct vm_entry *vme;
   char *check_addr = (char *)buffer;
+  int i;
 
   /* check all addresses from buffer to buffer+size-1 */
-  for(unsigned i=0; i<size; i++){
+  for(i=0; i<(int)size; i++){
     /* Get vm_entry from check_address */
     vme = check_address((void *)check_addr);
     
@@ -236,10 +237,11 @@ void check_valid_buffer(void *buffer, unsigned size, bool to_write){
 // Check if string address is valid
 void check_valid_string(const void *str){
   char *check_addr = (char *)str;
-  do{
-    check_address((void *)check_addr);
+  check_address((void *)check_addr);
+  while(*check_addr != 0){
     check_addr++;
-  }while(*check_addr != '\0');
+    check_address((void *)check_addr);
+  }
 }
 
 // 수정 가능성 있음
@@ -252,7 +254,7 @@ void get_argument(void *esp, int *arg, int count)
   while(count)
   {
     *arg = (int *)esp;
-    arg++;
+    arg = arg + 1;
     check_address(esp+4);
     esp=esp+4;
     count--;

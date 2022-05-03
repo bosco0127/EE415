@@ -1,9 +1,10 @@
 #ifndef USERPROG_SYSCALL_H
 #define USERPROG_SYSCALL_H
 #include "lib/user/syscall.h"
+#include "vm/page.h"
 
 void syscall_init (void);
-void check_address(void *addr);
+struct vm_entry *check_address(void *addr);
 void get_argument(void *esp, int *arg, int count);
 void syscall_init (void);
 void halt (void);

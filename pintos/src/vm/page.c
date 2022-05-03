@@ -1,7 +1,15 @@
+#include <stdio.h>
+#include <stdbool.h>
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "lib/string.h"
+#include "filesys/file.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
+#include "threads/palloc.h"
+#include "threads/malloc.h"
+#include "userprog/pagedir.h"
 #include "lib/kernel/hash.h"
 #include "vm/page.h"
 
@@ -86,4 +94,24 @@ static void vm_destroy_func(struct hash_elem *e, void *aux UNUSED){
 
   /* free vm_entry */
   free(vme);
+}
+
+bool load_file (void *kaddr, struct vm_entry *vme){
+  // Using file_read_at()
+  bool success = false;
+  size_t file_read_bytes;
+
+  // Write physical memory as much as read_bytes by file_read_at
+  file_read_bytes = file_read_at(vme->file, kaddr, vme->read_bytes, vme->offset);
+
+  if(file_read_bytes == vme->read_bytes){
+    // Return file_read_at status
+    success = true;
+    // Pad 0 as much as zero_bytes
+    memset(kaddr+vme->read_bytes, 0 , vme->zero_bytes);
+  }
+
+  // If file is loaded to memory, return true
+  return success;
+
 }

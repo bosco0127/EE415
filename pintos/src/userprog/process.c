@@ -15,6 +15,7 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "vm/page.h"
@@ -255,7 +256,7 @@ process_exit (void)
       }   
   }
   file_close(cur->running);
-  //free(cur->fd);
+  palloc_free_page(cur->fd);
   // remove all child
   remove_all_child_processes();
 
@@ -654,12 +655,64 @@ setup_stack (void **esp)
   vme->is_loaded = true;
 
   /* Add vm_entry to hash table by insert_vme() */
-  success = insert_vme(&thread_current()->vm,vme)
+  success = insert_vme(&thread_current()->vm,vme);
   if(!success){
     palloc_free_page(kpage);
     free(vme);
   }
 
+  return success;
+}
+
+/* Handle Page fault */
+bool handle_mm_fault(struct vm_entry *vme){
+  uint8_t *kpage;
+  bool success = false;
+  // return false if already loaded
+  if(vme->is_loaded == true){
+    return success;
+  }
+
+  // Allocate physical memory by palloc_get_page()
+  kpage = palloc_get_page (PAL_USER);
+  if(kpage == NULL){
+    return success;
+  }
+
+  // Handle fault by the vm_entry type: use switch
+  switch (vme->type)
+  {
+    // VM_BIN: load file to the physical memory w/ load_file()
+    case VM_BIN:
+      success = load_file(kpage,vme);
+      if(success == false){
+        palloc_free_page(kpage);
+        return success;
+      }
+      break;
+
+    case VM_FILE:
+      return false;
+      break;
+
+    case VM_ANON:
+      return false;
+      break;  
+
+    default:
+      return false;
+      break;
+  }
+
+  // Mapping kpage and upage w/ install_page()
+  success = install_page(vme->vaddr,kpage,vme->writable);
+  if(success == false){
+    palloc_free_page(kpage);
+    return success;
+  }
+
+  // Return whether loading succeed
+  vme->is_loaded = true;
   return success;
 }
 

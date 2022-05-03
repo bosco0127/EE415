@@ -198,6 +198,15 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+  t->fd = palloc_get_page(0);
+  int cnt;
+  for(cnt=0;cnt<64;cnt++)
+  {
+    t->fd[cnt]=NULL;
+  }
+  t->fd[0] = 0;
+  t->fd[1] = 1;
+
   /* Add to run queue. */
   thread_unblock (t);
 
@@ -474,19 +483,14 @@ init_thread (struct thread *t, const char *name, int priority)
 
 #ifdef USERPROG
   list_init(&t->child);
-  //t->fd = (struct file **)malloc(10*sizeof(struct file *));
-  int cnt;
-  for(cnt=0;cnt<64;cnt++)
-  //for(cnt=0;cnt<10;cnt++)
-  {
-    t->fd[cnt]=NULL;
-  }
-  t->fd[0] = 0;
-  t->fd[1] = 1;
   t->parent = running_thread();
   sema_init(&t->wait_load, 0);
   sema_init(&t->wait_exit, 0);
   list_push_back(&running_thread()->child, &t->child_elem);
+  int cnt = 0;
+  for(cnt = 0; cnt < 10; cnt ++){
+    t->handler_address[cnt] = 0;
+  }
 #endif
 }
 

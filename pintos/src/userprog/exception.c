@@ -6,6 +6,7 @@
 #include "threads/thread.h"
 // add
 #include "threads/vaddr.h"
+#include "userprog/process.h"
 #include "vm/page.h"
 
 /* Number of page faults processed. */
@@ -167,17 +168,19 @@ page_fault (struct intr_frame *f)
   vme = check_address(fault_addr);
 
   // Call handle_mm_fault().
+  load_success = handle_mm_fault(vme);
 
   // Check if loading by handle_mm_fault is succeed.
-
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  kill (f);
+  if(load_success == false){
+    /* To implement virtual memory, delete the rest of the function
+       body, and replace it with code that brings in the page to
+       which fault_addr refers. */
+    printf ("Page fault at %p: %s error %s page in %s context.\n",
+            fault_addr,
+            not_present ? "not present" : "rights violation",
+            write ? "writing" : "reading",
+            user ? "user" : "kernel");
+    kill (f);
+  }
 }
 

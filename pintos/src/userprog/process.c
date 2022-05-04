@@ -614,8 +614,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       /* Add vm_entry to hash table by insert_vme() */
       if(!insert_vme(&thread_current()->vm,vme)){
-	free(vme);
-	return false;
+	      free(vme);
+      	return false;
       }
 
       /* Advance. */
@@ -673,8 +673,69 @@ setup_stack (void **esp)
   return success;
 }
 
+// Expanding Stack by 8MB
+bool expand_stack(void* addr) {
+  struct vm_entry *vme_stack;
+  struct page *page_stack;
+  bool success = false;
+
+  // Check stack size is over 8MB
+  if ((size_t)(PHYS_BASE - pg_round_down(addr)) > STACK_MAX) {
+    return success;
+  }
+  
+  // Allocate vme_stack
+  vme_stack = (struct vm_entry *) malloc(sizeof(struct vm_entry));
+  if(vme_stack == NULL) {
+    return success;
+  }
+
+  // Initialize vme_stack
+  vme_stack->is_loaded = true;
+  vme_stack->type = VM_ANON;
+  vme_stack->vaddr = pg_round_down(addr);
+  vme_stack->writable = true;
+  //vme_stack->pinned = true;
+
+  // Allocate page_stack & Initialize
+  page_stack = alloc_page(PAL_USER | PAL_ZERO);
+  if(page_stack == NULL) {
+    free(vme_stack);
+    return success;
+  }
+  // Initialize vme of page structure
+  page_stack->vme = vme_stack;
+
+  // Install the page
+  success = install_page(vme_stack->vaddr, page_stack->kaddr, vme_stack->writable);
+  if(success == false) {
+    free(vme_stack);
+    free_page(page_stack->kaddr);
+    return success;
+  }
+  
+  // Insert vme to the current thread
+  success = insert_vme(&thread_current()->vm, vme_stack);
+  if(success == false) {
+    free(vme_stack);
+    free_page(page_stack->kaddr);
+    return success;
+  }
+
+  // Pinned!
+  return success;
+}
+
+// Verify Stack
+bool verify_stack(int32_t sp, int32_t addr) {
+  bool success = false;
+  success = ((size_t)(PHYS_BASE - pg_round_down(addr)) < STACK_MAX) &&
+    ((sp - addr) <= 32) && is_user_vaddr(addr);
+  return success;
+}
+
 /* Handle Page fault */
-bool handle_mm_fault(struct vm_entry *vme){
+bool handle_mm_fault(struct vm_entry *vme) {
   struct page *new_page;
   bool success = false;
 

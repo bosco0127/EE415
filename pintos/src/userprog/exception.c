@@ -164,6 +164,24 @@ page_fault (struct intr_frame *f)
     exit(-1);
   }
 
+  // Expand Stack
+  // find vme by fault_addr
+  vme = find_vme(fault_addr);
+  // if vme is not found, check if it is Expanding Stack
+  if(vme == NULL) {
+     // Verify it expands stack
+     if(!verify_stack(f->esp, (int32_t)fault_addr)) {
+       exit(-1);
+     }
+     // Expand stack
+     load_success = expand_stack(fault_addr);
+     if (load_success == false) {
+        exit(-1);
+     }
+     // Return
+     return;
+  }
+
   // Check fault_addr.
   vme = check_address(fault_addr);
 

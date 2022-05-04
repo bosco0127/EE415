@@ -5,15 +5,18 @@
 #include <list.h>
 #include <stdint.h>
 #include "lib/kernel/hash.h"
+#include "threads/thread.h"
 
 #define VM_BIN  0
 #define VM_FILE 1
 #define VM_ANON 2
 
-struct vm_entry{
+struct vm_entry {
     uint8_t type; // VM_BIN, VM_FILE, VM_ANON
     void *vaddr; // vm_entry VPN
     bool writable; // true: write enable, false: write disable
+
+    // struct page *page; == NULL, 0x000000.
 
     bool is_loaded; // flag whether it's loaded on the physical memory
     struct file *file; // file pointer
@@ -27,6 +30,14 @@ struct vm_entry{
     size_t swap_slot; // swap slot
 
     struct hash_elem elem; // hashtable element
+};
+
+/* Struct the physical page frame for replacement */
+struct page {
+  void *kaddr;
+  struct vm_entry *vme;
+  struct thread *thread;
+  struct list_elem lru;
 };
 
 /* Additional Functions */

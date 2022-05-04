@@ -19,6 +19,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "vm/page.h"
+#include "vm/frame.h"
+#include "vm/swap.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -484,8 +486,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  lock_release(&filesys_lock);
   //file_close (file);
+  lock_release(&filesys_lock);
   return success;
 }
 
@@ -556,6 +558,9 @@ static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
               uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
 {
+  // Project3: Need to be reopen
+  struct file *reopened_file = file_reopen(file);
+  
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
@@ -593,7 +598,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Create vm_entry with malloc() */
       struct vm_entry *vme =(struct vm_entry *) malloc(sizeof(struct vm_entry));
       if(vme == NULL){
-	return false;
+	      return false;
       }
 
       /* Setting vm_entry members, offset and size of file to read when virtual
@@ -602,7 +607,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       vme->vaddr = upage;
       vme->writable = writable;
       vme->is_loaded = false;
-      vme->file = file;
+      vme->file = reopened_file; //file;
       vme->offset = ofs;
       vme->read_bytes = page_read_bytes;
       vme->zero_bytes = page_zero_bytes;
@@ -627,23 +632,25 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp) 
 {
-  uint8_t *kpage;
+  struct page *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  kpage = alloc_page (PAL_USER | PAL_ZERO);//palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+      success = install_page (pg_round_down(((uint8_t *) PHYS_BASE) - PGSIZE), kpage->kaddr, true);
       if (success)
         *esp = PHYS_BASE;
       else
-        palloc_free_page (kpage);
+        free_page(kpage->kaddr);
     }
+  else
+    return success;
 
   /* Create vm_entry with malloc() */
   struct vm_entry *vme =(struct vm_entry *) malloc(sizeof(struct vm_entry));
   if(vme == NULL){
-    palloc_free_page(kpage);
+    free_page(kpage->kaddr);
     return false;
   }
 
@@ -653,11 +660,13 @@ setup_stack (void **esp)
   vme->vaddr = pg_round_down(((uint8_t *) PHYS_BASE) - PGSIZE);
   vme->writable = true;
   vme->is_loaded = true;
+  //vme->pinned = true;
+  kpage->vme = vme;
 
   /* Add vm_entry to hash table by insert_vme() */
   success = insert_vme(&thread_current()->vm,vme);
   if(!success){
-    palloc_free_page(kpage);
+    free_page(kpage->kaddr);
     free(vme);
   }
 
@@ -666,37 +675,50 @@ setup_stack (void **esp)
 
 /* Handle Page fault */
 bool handle_mm_fault(struct vm_entry *vme){
-  uint8_t *kpage;
+  struct page *new_page;
   bool success = false;
+
+  if (vme == NULL) {
+    return success; 
+  }
+
   // return false if already loaded
   if(vme->is_loaded == true){
     return success;
   }
 
   // Allocate physical memory by palloc_get_page()
-  kpage = palloc_get_page (PAL_USER);
-  if(kpage == NULL){
+  new_page = alloc_page (PAL_USER); //palloc_get_page (PAL_USER);
+  if(new_page == NULL){
     return success;
   }
+
+  // set page
+  new_page->vme = vme;
+  //vme->pinned = true;
 
   // Handle fault by the vm_entry type: use switch
   switch (vme->type)
   {
     // VM_BIN: load file to the physical memory w/ load_file()
     case VM_BIN:
-      success = load_file(kpage,vme);
+      success = load_file(new_page->kaddr,vme);
       if(success == false){
-        palloc_free_page(kpage);
+        free_page(new_page->kaddr);
         return success;
       }
       break;
 
     case VM_FILE:
-      return false;
+      success = load_file(new_page->kaddr,vme);
+      if(success == false){
+        free_page(new_page->kaddr);
+        return success;
+      }
       break;
 
     case VM_ANON:
-      return false;
+      swap_in(vme->swap_slot, new_page->kaddr);
       break;  
 
     default:
@@ -704,10 +726,10 @@ bool handle_mm_fault(struct vm_entry *vme){
       break;
   }
 
-  // Mapping kpage and upage w/ install_page()
-  success = install_page(vme->vaddr,kpage,vme->writable);
+  // Mapping new_page and upage w/ install_page()
+  success = install_page(vme->vaddr,new_page->kaddr,vme->writable);
   if(success == false){
-    palloc_free_page(kpage);
+    free_page(new_page->kaddr);
     return success;
   }
 

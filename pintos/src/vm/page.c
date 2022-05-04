@@ -9,9 +9,12 @@
 #include "threads/vaddr.h"
 #include "threads/palloc.h"
 #include "threads/malloc.h"
+#include "threads/synch.h"
 #include "userprog/pagedir.h"
 #include "lib/kernel/hash.h"
+#include "lib/kernel/list.h"
 #include "vm/page.h"
+#include "vm/frame.h"
 
 void vm_init(struct hash *vm){
   hash_init(vm, vm_hash_func, vm_less_func, NULL);
@@ -86,8 +89,8 @@ static void vm_destroy_func(struct hash_elem *e, void *aux UNUSED){
   /* If it is loaded, deallocate page & page mapping */
   if(vme->is_loaded){
     paddr = pagedir_get_page(thread_current()->pagedir, vme->vaddr);
-    /* free page */
-    palloc_free_page(paddr);
+    /* free page + remove from the lru_list */
+    free_page(paddr);
     /* clear page directory */
     pagedir_clear_page(thread_current()->pagedir, vme->vaddr);
   }

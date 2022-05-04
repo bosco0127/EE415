@@ -194,8 +194,7 @@ syscall_handler (struct intr_frame *f UNUSED)
 struct vm_entry *check_address(void *addr)
 {
   /* Exit if addr is not in user space */
-  if(addr < (void *)0x08048000 || addr >= (void *)0xc0000000)
-  {
+  if(addr < (void *)0x08048000 || addr >= (void *)0xc0000000) {
     exit(-1);
   }
   struct vm_entry *vme;
@@ -204,7 +203,7 @@ struct vm_entry *check_address(void *addr)
   vme = find_vme(addr);
 
   /* check vme is exist */
-  if(vme == NULL){
+  if(vme == NULL) {
     exit(-1);
   }
 

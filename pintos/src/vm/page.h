@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "lib/kernel/hash.h"
+#include "lib/user/syscall.h"
 #include "threads/thread.h"
 
 #define VM_BIN  0
@@ -38,6 +39,14 @@ struct page {
   struct vm_entry *vme;
   struct thread *thread;
   struct list_elem lru;
+};
+
+/* Structure of memory mapped file */
+struct mmap_file {
+  mapid_t mapid;
+  struct file *file;
+  struct list_elem elem;
+  struct list vme_list;
 };
 
 /* Additional Functions */

@@ -119,6 +119,8 @@ struct thread
 
     /* Project3 */
     struct hash vm; // hashtable for virtual memory
+    struct list mmap_list; // list for memory mapped file
+    int mapid;
   };
 
 /* If false (default), use round-robin scheduler.

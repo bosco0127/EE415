@@ -262,6 +262,9 @@ process_exit (void)
   // remove all child
   remove_all_child_processes();
 
+  // Unmap all the mmap file
+  munmap(-1);
+  
   /* Destroy vm hash table */
   vm_destroy(&cur->vm);
 

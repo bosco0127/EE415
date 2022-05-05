@@ -1,4 +1,5 @@
 #include "userprog/syscall.h"
+#include "userprog/pagedir.h"
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
@@ -187,6 +188,16 @@ syscall_handler (struct intr_frame *f UNUSED)
   case SYS_YIELD:
       sched_yield();
     break;
+  case SYS_MMAP:
+      // arg = 2
+      get_argument(esp, arg, 2);
+      f->eax = mmap((int)*(uint32_t*)arg[0], (void *)*(uint32_t*)arg[1]);
+    break;
+  case SYS_MUNMAP:
+      // arg = 1
+      get_argument(esp, arg, 1);
+      munmap((mapid_t)*(uint32_t*)arg[0]);
+    break;    
   }
 }
 
@@ -451,4 +462,187 @@ void sendsig (pid_t pid, int signum)
 void sched_yield ()
 {
   thread_yield();
+}
+
+int
+mmap (int fd, void *addr)
+{
+  // Check fd is 2~63
+  if(fd < 2 || fd > 63) {
+    return -1;
+  }
+
+  // Check addr: page aligned, already in use, is 0.
+  if((uint32_t)addr%PGSIZE != 0 || find_vme(addr) != NULL || addr == NULL) {
+    return -1;
+  }
+
+  struct thread *cur = thread_current();
+  struct mmap_file *new_mmap_file;
+  struct vm_entry *new_vme;
+  struct file *file_reopened;
+  void *vaddr = addr;
+  size_t file_size;
+  size_t page_read_bytes;
+  size_t page_zero_bytes;
+  off_t offset = 0;
+  struct list_elem *e;
+  struct vm_entry *vme;
+
+  // Reopen file & Check validation
+  file_reopened = file_reopen(cur->fd[fd]);
+  if(file_reopened == NULL) {
+    return -1;
+  }
+
+  // Get file size & if zero, return -1
+  file_size = file_length(file_reopened);
+  if(file_size <= 0) {
+    return -1;
+  }
+
+  // Allocate new_mmap_file
+  new_mmap_file = (struct mmap_file *) malloc(sizeof(struct mmap_file));
+  if(new_mmap_file == NULL) {
+    return -1;
+  }
+  // Allocate mapid
+  new_mmap_file->mapid = cur->mapid;
+  cur->mapid++;
+  // Initialize vme_list of new_mmap_file
+  list_init(&new_mmap_file->vme_list);
+  // Initialize file pointer of new_mmap_file
+  new_mmap_file->file = file_reopened;
+
+  // Allocate vm_entries
+  while(file_size > 0) {
+    // Allocate memory to the vme
+    new_vme = (struct vm_entry *) malloc(sizeof(struct vm_entry));
+    if(new_vme == NULL) {
+      for(e = list_begin(&new_mmap_file->vme_list); e = !list_end(&new_mmap_file->vme_list); e = list_next(e)) {
+        vme = list_entry(e, struct vm_entry, mmap_elem);
+        free(vme);
+      }
+      free(new_mmap_file);
+      return -1;
+    }
+
+    /* Calculate how to fill this page.
+       We will read PAGE_READ_BYTES bytes from FILE
+       and zero the final PAGE_ZERO_BYTES bytes. */
+    page_read_bytes = file_size < PGSIZE ? file_size : PGSIZE;
+    page_zero_bytes = PGSIZE - page_read_bytes;
+    /* Setting vm_entry members, offset and size of file to read when virtual
+       page is requitred, zero byte to pad at the end, ... */
+    new_vme->type = VM_FILE;
+    new_vme->vaddr = vaddr;
+    new_vme->writable = true;
+    new_vme->is_loaded = false;
+    new_vme->file = file_reopened; //file;
+    new_vme->offset = offset;
+    new_vme->read_bytes = page_read_bytes;
+    new_vme->zero_bytes = page_zero_bytes;
+    //new_vme->pinned = false;
+
+    /* Add vm_entry to hash table by insert_vme() */
+    if(!insert_vme(&cur->vm,new_vme)){
+	    free(new_vme);
+      for(e = list_begin(&new_mmap_file->vme_list); e = !list_end(&new_mmap_file->vme_list); e = list_next(e)) {
+        vme = list_entry(e, struct vm_entry, mmap_elem);
+        free(vme);
+      }
+      free(new_mmap_file);
+      return -1;
+    }
+
+    // Insert new_vme to new_mmap vme_list
+    list_push_back(&new_mmap_file->vme_list, &new_vme->mmap_elem);
+
+    /* Advance. */
+    offset += page_read_bytes;
+    file_size -= page_read_bytes;
+    vaddr += PGSIZE;
+  }
+
+  // Insert new_vme to new_mmap vme_list
+  list_push_back(&cur->mmap_list, &new_mmap_file->elem);
+
+  return new_mmap_file->mapid;
+}
+
+void do_munmap(struct mmap_file *mmap_file) {
+  struct thread *cur = thread_current();
+  struct vm_entry *vme;
+  struct list_elem *e;
+  struct list_elem *temp;
+  void *paddr;
+
+  // Remove all vm_entry in the vme_list
+  for(e = list_begin(&mmap_file->vme_list); e != list_end(&mmap_file->vme_list); e = list_next(e)) {
+    vme = list_entry(e, struct vm_entry, mmap_elem);
+
+    // Check if it is loaded.
+    if(vme->is_loaded == true) {
+
+      // Check if the page is dirty
+      // If it is dirty, write back to the file.
+      paddr = pagedir_get_page(cur->pagedir, vme->vaddr);
+      if(pagedir_is_dirty(cur->pagedir, vme->vaddr) == true) {
+        lock_acquire(&filesys_lock);
+        file_write_at(vme->file, vme->vaddr, vme->read_bytes, vme->offset);
+        lock_release(&filesys_lock);
+      }
+
+      // Clear the page
+      pagedir_clear_page(cur->pagedir, vme->vaddr);
+
+      // free page
+      free_page(paddr);
+    }
+
+    // Remove from the vme_list
+    temp = list_prev(e); // trouble in list_next()
+    list_remove(e);
+    e = temp;
+
+    // Remove from the vm of the current thread.
+    delete_vme(&cur->vm, vme);
+  }
+}
+
+void
+munmap (mapid_t mapid)
+{
+  struct thread *cur = thread_current();
+  struct mmap_file *mmap;
+  struct list_elem *e;
+  struct list_elem *temp;
+
+  // Remove all mmap_file in the cur->mmap_list
+  for(e = list_begin(&cur->mmap_list); e != list_end(&cur->mmap_list); e = list_next(e)) {
+    mmap = list_entry(e, struct mmap_file, elem);
+
+    // Check if mapid is matched or -1(close all mmap file)
+    if(mapid == -1 || mmap->mapid == mapid) {
+
+      // Remove all vm_entry from the mmap
+      do_munmap(mmap);
+      
+      // Close file
+      file_close(mmap->file);
+
+      // remove from the cur->mmap_list
+      temp = list_prev(e);
+      list_remove(e);
+      e = temp;
+
+      // Deallocate the memory
+      free(mmap);
+
+      // Break if mapid is not for closin all the mmap file
+      if(mapid != -1) {
+        break;
+      }
+    }
+  }
 }

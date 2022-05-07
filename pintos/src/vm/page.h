@@ -20,6 +20,7 @@ struct vm_entry {
     // struct page *page; == NULL, 0x000000.
 
     bool is_loaded; // flag whether it's loaded on the physical memory
+    bool pinned;
     struct file *file; // file pointer
 
     struct list_elem mmap_elem; // memory map list element

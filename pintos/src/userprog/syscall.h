@@ -4,8 +4,8 @@
 #include "vm/page.h"
 
 void syscall_init (void);
-struct vm_entry *check_address(void *addr);
-void get_argument(void *esp, int *arg, int count);
+struct vm_entry *check_address(void *addr, void *esp);
+void get_argument(void *esp, int *arg, int count, void *f_esp);
 void syscall_init (void);
 void halt (void);
 void exit (int status);

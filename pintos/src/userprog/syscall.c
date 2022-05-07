@@ -1,5 +1,6 @@
 #include "userprog/syscall.h"
 #include "userprog/pagedir.h"
+#include "userprog/process.h"
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
@@ -7,6 +8,7 @@
 #include "threads/vaddr.h"
 #include "devices/shutdown.h"
 #include "filesys/filesys.h"
+#include "filesys/file.h"
 #include "filesys/off_t.h"
 #include "vm/page.h"
 
@@ -103,7 +105,7 @@ syscall_handler (struct intr_frame *f UNUSED)
     arg[cnt] = 0;
     cnt--;
   }
-  check_address(esp);
+  check_address(esp, esp);
   switch (int_num)
   {
   case SYS_HALT:
@@ -112,77 +114,82 @@ syscall_handler (struct intr_frame *f UNUSED)
     break;
   case SYS_EXIT:
       // arg = 1
-      get_argument(esp, arg, 1);
+      get_argument(esp, arg, 1, esp);
       exit((int)*(uint32_t *)arg[0]);
     break;
   case SYS_EXEC:
       // arg = 1
-      get_argument(esp, arg, 1);
-      check_valid_string((const void *)*(uint32_t *)arg[0]);
+      get_argument(esp, arg, 1, esp);
+      check_valid_string((const void *)*(uint32_t *)arg[0], esp);
       f->eax = exec((const char *)*(uint32_t *)arg[0]);
+      // unpin_string((const void *)*(uint32_t *)arg[0]);
     break;
   case SYS_WAIT:
       // arg = 1
-      get_argument(esp, arg, 1);
+      get_argument(esp, arg, 1, esp);
       f->eax = wait((pid_t)*(uint32_t*)arg[0]);
     break;
   case SYS_CREATE:
       // arg = 2;
-      get_argument(esp, arg, 2);
-      check_valid_string((const void *)*(uint32_t *)arg[0]);
+      get_argument(esp, arg, 2, esp);
+      check_valid_string((const void *)*(uint32_t *)arg[0], esp);
       f->eax = create((const char *)*(uint32_t *)arg[0], (unsigned)*(uint32_t *)arg[1]);
+      // unpin_string((const void *)*(uint32_t *)arg[0]);
     break;
   case SYS_REMOVE:
       // arg = 1
-      get_argument(esp, arg, 1);
-      check_valid_string((const void *)*(uint32_t *)arg[0]);
+      get_argument(esp, arg, 1, esp);
+      check_valid_string((const void *)*(uint32_t *)arg[0], esp);
       f->eax = remove((const char *)*(uint32_t *)arg[0]);
     break;
   case SYS_OPEN:
       // arg = 1
-      get_argument(esp, arg, 1);
-      check_valid_string((const void *)*(uint32_t *)arg[0]);
+      get_argument(esp, arg, 1, esp);
+      check_valid_string((const void *)*(uint32_t *)arg[0], esp);
       f->eax = open((const char*)*(uint32_t *)arg[0]);
+      // unpin_string((const void *)*(uint32_t *)arg[0]);
     break;
   case SYS_FILESIZE:
       // arg = 1
-      get_argument(esp, arg, 1);
+      get_argument(esp, arg, 1, esp);
       f->eax = filesize((int)*(uint32_t*)arg[0]);
     break;
   case SYS_READ:
       // arg = 3
-      get_argument(esp, arg, 3);
-      check_valid_buffer((void *)*(uint32_t*)arg[1], (unsigned)*(uint32_t*)arg[2], true);
+      get_argument(esp, arg, 3, esp);
+      check_valid_buffer((void *)*(uint32_t*)arg[1], (unsigned)*(uint32_t*)arg[2], true, esp);
       f->eax = read((int)*(uint32_t *)arg[0], (void *)*(uint32_t*)arg[1], (unsigned)*(uint32_t*)arg[2]);
+      unpin_buffer((void *)*(uint32_t*)arg[1], (unsigned)*(uint32_t*)arg[2]);
     break;
   case SYS_WRITE:
       // arg = 3
-      get_argument(esp, arg, 3);
-      check_valid_buffer((void *)*(uint32_t*)arg[1], (unsigned)*(uint32_t*)arg[2], false);
+      get_argument(esp, arg, 3, esp);
+      check_valid_buffer((void *)*(uint32_t*)arg[1], (unsigned)*(uint32_t*)arg[2], false, esp);
       f->eax = write((int)*(uint32_t *)arg[0], (const void *)*(uint32_t*)arg[1], *(uint32_t*)arg[2]);
+      unpin_buffer((void *)*(uint32_t*)arg[1], (unsigned)*(uint32_t*)arg[2]);
     break;
   case SYS_SEEK:
       // arg = 2
-      get_argument(esp, arg, 2);
+      get_argument(esp, arg, 2, esp);
       seek((int)*(uint32_t*)arg[0], (unsigned)*(uint32_t*)arg[1]);
     break;
   case SYS_TELL:
       // arg = 1
-      get_argument(esp, arg, 1);
+      get_argument(esp, arg, 1, esp);
       f->eax = tell((int)*(uint32_t*)arg[0]);
     break;
   case SYS_CLOSE:
       // arg = 1
-      get_argument(esp, arg, 1);
+      get_argument(esp, arg, 1, esp);
       close((int)*(uint32_t*)arg[0]);
     break;
     
   case SYS_SIGACTION:
-      get_argument(esp, arg, 2);
+      get_argument(esp, arg, 2, esp);
       sigaction((int)*(uint32_t *)arg[0], (void *)*(uint32_t *)arg[1]);
     break;
   case SYS_SENDSIG:
-      get_argument(esp, arg, 2);
+      get_argument(esp, arg, 2, esp);
       sendsig((pid_t)*(uint32_t *)arg[0], (int)*(uint32_t *)arg[1]);
     break;
   case SYS_YIELD:
@@ -190,19 +197,20 @@ syscall_handler (struct intr_frame *f UNUSED)
     break;
   case SYS_MMAP:
       // arg = 2
-      get_argument(esp, arg, 2);
+      get_argument(esp, arg, 2, esp);
       f->eax = mmap((int)*(uint32_t*)arg[0], (void *)*(uint32_t*)arg[1]);
     break;
   case SYS_MUNMAP:
       // arg = 1
-      get_argument(esp, arg, 1);
+      get_argument(esp, arg, 1, esp);
       munmap((mapid_t)*(uint32_t*)arg[0]);
     break;    
   }
+  unpin_addr(f->esp);
 }
 
 // 유저 영역을 벗어났는지 확인
-struct vm_entry *check_address(void *addr)
+struct vm_entry *check_address(void *addr, void *esp)
 {
   /* Exit if addr is not in user space */
   if(addr < (void *)0x08048000 || addr >= (void *)0xc0000000) {
@@ -215,14 +223,22 @@ struct vm_entry *check_address(void *addr)
 
   /* check vme is exist */
   if(vme == NULL) {
-    exit(-1);
+    // Verify it expands stack
+     if(!verify_stack((int32_t)esp, (int32_t)addr)) {
+       exit(-1);
+     }
+     // Expand stack
+     vme = expand_stack(addr);
+     if (vme == NULL) {
+        exit(-1);
+     }
   }
 
   return vme;
 }
 
 // Check buffer address is valid
-void check_valid_buffer(void *buffer, unsigned size, bool to_write){
+void check_valid_buffer(void *buffer, unsigned size, bool to_write, void *esp){
   struct vm_entry *vme;
   char *check_addr = (char *)buffer;
   int i;
@@ -230,7 +246,7 @@ void check_valid_buffer(void *buffer, unsigned size, bool to_write){
   /* check all addresses from buffer to buffer+size-1 */
   for(i=0; i<(int)size; i++){
     /* Get vm_entry from check_address */
-    vme = check_address((void *)check_addr);
+    vme = check_address((void *)check_addr, esp);
     
     /* Check writable if to_write is true */
     if(to_write){
@@ -245,27 +261,75 @@ void check_valid_buffer(void *buffer, unsigned size, bool to_write){
 }
 
 // Check if string address is valid
-void check_valid_string(const void *str){
+void check_valid_string(const void *str, void *esp){
   char *check_addr = (char *)str;
-  check_address((void *)check_addr);
+  check_address((void *)check_addr, esp);
   while(*check_addr != 0){
     check_addr++;
-    check_address((void *)check_addr);
+    check_address((void *)check_addr, esp);
   }
 }
 
+// Pin vm_entry for vaddr
+void pin_addr(void *vaddr) {
+  struct vm_entry *vme = find_vme(vaddr);
+  vme->pinned = true;
+  if(vme->is_loaded == false) {
+    handle_mm_fault(vme);
+  }
+}
+
+// Pin whole buffer
+void pin_buffer(void *buffer, unsigned size) {
+  char *vaddr = (char *)buffer;
+  int i;
+  for(i=0; i < size; i++) {
+    pin_addr((void *)vaddr);
+    vaddr++;
+  }
+}
+
+// Unpin vm_entry for vaddr
+void unpin_addr(void *vaddr) {
+  struct vm_entry *vme;
+  vme = find_vme(vaddr);
+  if(vme != NULL) {
+    vme->pinned = false;
+  }
+}
+
+// Unpin whole buffer
+void unpin_buffer(void *buffer, unsigned size) {
+  char *vaddr = (char *)buffer;
+  int i;
+  for(i=0; i < size; i++) {
+    unpin_addr((void *)vaddr);
+    vaddr++;
+  }
+}
+
+// Unpin string
+/*void unpin_string(const void *str) {
+  char *vaddr = (char *)str;
+  unpin_addr((void *)vaddr);
+  while(*vaddr != 0){
+    vaddr++;
+    unpin_addr((void *)vaddr);
+  }
+}*/
+
 // 수정 가능성 있음
-void get_argument(void *esp, int *arg, int count)
+void get_argument(void *esp, int *arg, int count, void *f_esp)
 {
   // esp는 첫 instruction number을 가리키므로 +4 먼저 함
   // +4 하는 과정에서 check_address 먼저
-  check_address(esp+4);
+  check_address(esp+4, f_esp);
   esp = esp+4;
   while(count)
   {
     *arg = (int *)esp;
     arg = arg + 1;
-    check_address(esp+4);
+    check_address(esp+4, f_esp);
     esp=esp+4;
     count--;
   }
@@ -365,6 +429,7 @@ filesize (int fd)
 int read (int fd, void* buffer, unsigned size) {
   int i;
   int ret;
+  pin_buffer(buffer, size);
   lock_acquire(&filesys_lock);
   if (fd == 0) {
     for (i = 0; i < size; i ++) {
@@ -387,6 +452,7 @@ int read (int fd, void* buffer, unsigned size) {
 int write (int fd, const void *buffer, unsigned size) {
 
   int ret = -1;
+  pin_buffer(buffer, size);
   lock_acquire(&filesys_lock);
   if (fd == 1) {
     putbuf(buffer, size);
@@ -538,14 +604,14 @@ mmap (int fd, void *addr)
     new_vme->vaddr = vaddr;
     new_vme->writable = true;
     new_vme->is_loaded = false;
+    new_vme->pinned = false;
     new_vme->file = file_reopened; //file;
     new_vme->offset = offset;
     new_vme->read_bytes = page_read_bytes;
     new_vme->zero_bytes = page_zero_bytes;
-    //new_vme->pinned = false;
 
     /* Add vm_entry to hash table by insert_vme() */
-    if(!insert_vme(&cur->vm,new_vme)){
+    if(!insert_vme(&cur->vm,new_vme)) {
 	    free(new_vme);
       for(e = list_begin(&new_mmap_file->vme_list); e = !list_end(&new_mmap_file->vme_list); e = list_next(e)) {
         vme = list_entry(e, struct vm_entry, mmap_elem);
@@ -576,6 +642,10 @@ void do_munmap(struct mmap_file *mmap_file) {
   struct list_elem *e;
   struct list_elem *temp;
   void *paddr;
+
+  if(mmap_file == NULL) {
+    return;
+  }
 
   // Remove all vm_entry in the vme_list
   for(e = list_begin(&mmap_file->vme_list); e != list_end(&mmap_file->vme_list); e = list_next(e)) {
@@ -617,6 +687,10 @@ munmap (mapid_t mapid)
   struct mmap_file *mmap;
   struct list_elem *e;
   struct list_elem *temp;
+
+  if(list_empty(&cur->mmap_list)) {
+    return;
+  }
 
   // Remove all mmap_file in the cur->mmap_list
   for(e = list_begin(&cur->mmap_list); e != list_end(&cur->mmap_list); e = list_next(e)) {

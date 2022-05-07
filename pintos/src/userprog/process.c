@@ -250,6 +250,10 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+  
+  // Unmap all the mmap file
+  munmap(-1);
+
   for (int i = 2; i < 64; i++) {
   //for (int i = 2; i < 10; i++) {
       if (cur->fd[i] != NULL) {
@@ -261,9 +265,6 @@ process_exit (void)
   palloc_free_page(cur->fd);
   // remove all child
   remove_all_child_processes();
-
-  // Unmap all the mmap file
-  munmap(-1);
   
   /* Destroy vm hash table */
   vm_destroy(&cur->vm);
@@ -610,6 +611,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       vme->vaddr = upage;
       vme->writable = writable;
       vme->is_loaded = false;
+      vme->pinned = false;
       vme->file = reopened_file; //file;
       vme->offset = ofs;
       vme->read_bytes = page_read_bytes;
@@ -663,7 +665,7 @@ setup_stack (void **esp)
   vme->vaddr = pg_round_down(((uint8_t *) PHYS_BASE) - PGSIZE);
   vme->writable = true;
   vme->is_loaded = true;
-  //vme->pinned = true;
+  vme->pinned = false;
   kpage->vme = vme;
 
   /* Add vm_entry to hash table by insert_vme() */
@@ -677,34 +679,34 @@ setup_stack (void **esp)
 }
 
 // Expanding Stack by 8MB
-bool expand_stack(void* addr) {
+struct vm_entry *expand_stack(void* addr) {
   struct vm_entry *vme_stack;
   struct page *page_stack;
   bool success = false;
 
   // Check stack size is over 8MB
   if ((size_t)(PHYS_BASE - pg_round_down(addr)) > STACK_MAX) {
-    return success;
+    return NULL;
   }
   
   // Allocate vme_stack
   vme_stack = (struct vm_entry *) malloc(sizeof(struct vm_entry));
   if(vme_stack == NULL) {
-    return success;
+    return NULL;
   }
 
   // Initialize vme_stack
   vme_stack->is_loaded = true;
+  vme_stack->pinned = false;
   vme_stack->type = VM_ANON;
   vme_stack->vaddr = pg_round_down(addr);
   vme_stack->writable = true;
-  //vme_stack->pinned = true;
 
   // Allocate page_stack & Initialize
   page_stack = alloc_page(PAL_USER | PAL_ZERO);
   if(page_stack == NULL) {
     free(vme_stack);
-    return success;
+    return NULL;
   }
   // Initialize vme of page structure
   page_stack->vme = vme_stack;
@@ -714,7 +716,7 @@ bool expand_stack(void* addr) {
   if(success == false) {
     free(vme_stack);
     free_page(page_stack->kaddr);
-    return success;
+    return NULL;
   }
   
   // Insert vme to the current thread
@@ -722,11 +724,15 @@ bool expand_stack(void* addr) {
   if(success == false) {
     free(vme_stack);
     free_page(page_stack->kaddr);
-    return success;
+    return NULL;
   }
 
   // Pinned!
-  return success;
+  /*if(intr_context()) {
+    vme_stack->pinned = false;
+  }*/
+
+  return vme_stack;
 }
 
 // Verify Stack
@@ -745,13 +751,8 @@ bool handle_mm_fault(struct vm_entry *vme) {
   if (vme == NULL) {
     return success; 
   }
-
-  // return false if already loaded
-  if(vme->is_loaded == true){
-    return success;
-  }
-
-  // Allocate physical memory by palloc_get_page()
+  
+  // Allocate physical memory by alloc_page()
   new_page = alloc_page (PAL_USER); //palloc_get_page (PAL_USER);
   if(new_page == NULL){
     return success;
@@ -759,7 +760,15 @@ bool handle_mm_fault(struct vm_entry *vme) {
 
   // set page
   new_page->vme = vme;
+
+  // Set pin
   //vme->pinned = true;
+
+  // return false if already loaded
+  if(vme->is_loaded == true){
+    free_page(new_page->kaddr);
+    return success;
+  }
 
   // Handle fault by the vm_entry type: use switch
   switch (vme->type)

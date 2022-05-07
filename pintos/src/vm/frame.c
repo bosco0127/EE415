@@ -94,6 +94,10 @@ void free_page(void *kaddr){
 }
 
 void __free_page(struct page* page){
+  // vme->unloaded
+  page->vme->is_loaded = false;
+  page->vme->pinned = false;
+
   // Remove page from lru_list
   del_page_from_lru_list(page);
 
@@ -162,9 +166,9 @@ void try_to_free_pages(enum palloc_flags flags){
     }*/
 
     // if pinned, it is not a victim.
-    /*if(lru_page->vme->pinned == true){
+    if(lru_page->vme->pinned == true){
       continue;
-    }*/
+    }
 
     // get thread that has lru page
     thread_lru = lru_page->thread;
@@ -181,13 +185,13 @@ void try_to_free_pages(enum palloc_flags flags){
       // if file, write it to the file
       if(lru_page->vme->type == VM_FILE){
         lock_acquire(&filesys_lock);
-	file_write_at(lru_page->vme->file, lru_page->kaddr, lru_page->vme->read_bytes, lru_page->vme->offset);
-	lock_release(&filesys_lock);
+	      file_write_at(lru_page->vme->file, lru_page->kaddr, lru_page->vme->read_bytes, lru_page->vme->offset);
+	      lock_release(&filesys_lock);
       }
       // else, swap out
       else{
-	lru_page->vme->type = VM_ANON;
-	lru_page->vme->swap_slot = swap_out(lru_page->kaddr);
+	      lru_page->vme->type = VM_ANON;
+	      lru_page->vme->swap_slot = swap_out(lru_page->kaddr);
       }
     }
 

@@ -174,8 +174,7 @@ page_fault (struct intr_frame *f)
        exit(-1);
      }
      // Expand stack
-     load_success = expand_stack(fault_addr);
-     if (load_success == false) {
+     if (expand_stack(fault_addr) == NULL) {
         exit(-1);
      }
      // Return
@@ -187,6 +186,9 @@ page_fault (struct intr_frame *f)
 
   // Call handle_mm_fault().
   load_success = handle_mm_fault(vme);
+  if(vme->is_loaded == true) {
+     vme -> pinned = false;
+  }
 
   // Check if loading by handle_mm_fault is succeed.
   if(load_success == false){

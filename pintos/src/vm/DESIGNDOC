@@ -1,0 +1,300 @@
+       	    +---------------------------+
+		    |		CS 140		        |
+		    | PROJECT 3: VIRTUAL MEMORY	|
+		    |	   DESIGN DOCUMENT	    |
+		    +---------------------------+
+
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+HyunDeok Kong : bosco0127@kaist.ac.kr
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for the
+>> TAs, or extra credit, please give them here.
+
+NOTICE: My previous teammate dropped the course, but he remains on the
+attendance book.
+
+>> Please cite any offline or online sources you consulted while
+>> preparing your submission, other than the Pintos documentation, course
+>> text, lecture notes, and course staff.
+
+We worked on the project 2 by referring to the ppt named "핀토스 운영체제 실습"
+written by professor Youjip Won when he was at the Hanyang University.
+All algorithms in the code we wrote is referred to pp.306 - 407 of it.
+
+			PAGE TABLE MANAGEMENT
+			=====================
+
+---- DATA STRUCTURES ----
+
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+#define VM_BIN  0
+#define VM_FILE 1
+#define VM_ANON 2
+: page type for binary, file, anonymous page.
+
+vm_entry: Contains information about each virtual page. Details about
+struct member is written on the comment.
+struct vm_entry {
+    uint8_t type; // VM_BIN, VM_FILE, VM_ANON
+    void *vaddr; // vm_entry VPN
+    bool writable; // true: write enable, false: write disable
+
+    // struct page *page; == NULL, 0x000000.
+
+    bool is_loaded; // flag whether it's loaded on the physical memory
+    bool pinned;
+    struct file *file; // file pointer
+
+    struct list_elem mmap_elem; // memory map list element
+
+    size_t offset; // file offset
+    size_t read_bytes; // size of data in a virtual page
+    size_t zero_bytes; // rest of the byte
+
+    size_t swap_slot; // swap slot
+
+    struct hash_elem elem; // hashtable element
+};
+
+vm: thread have hashtable for managing the vm_entries.
+struct thread {
+  struct hash vm; // hashtable for virtual memory
+}
+
+---- ALGORITHMS ----
+
+>> A2: In a few paragraphs, describe your code for locating the frame,
+>> if any, that contains the data of a given page.
+
+First, using corresponding user virtual address, we can find corresponding
+kernel address by using pagedir_get_page() function.
+
+If it is not mapped to the physical frame, then we can find corresponding
+vm_entry by using fine_vme() which finds vm_entry in the hash table with
+the hash function that uses user virtual address as a hash value.
+After find vm_entry, we can allocate frame by handle_mm_fault() function.
+
+>> A3: How does your code coordinate accessed and dirty bits between
+>> kernel and user virtual addresses that alias a single frame, or
+>> alternatively how do you avoid the issue?
+
+To avoid the issue, we only access the user data through user virtual
+address and do not access user data by kernel address.
+
+---- SYNCHRONIZATION ----
+
+>> A4: When two user processes both need a new frame at the same time,
+>> how are races avoided?
+
+I used palloc_get_page() function which uses lock when it scan/flip
+the bitmap. Since it uses lock, we can avoid the race condition that
+two processes simultaneously get the same physical frame.
+
+---- RATIONALE ----
+
+>> A5: Why did you choose the data structure(s) that you did for
+>> representing virtual-to-physical mappings?
+
+Using HashTable, we can find the entry which we want within O(1) time,
+which can reduce time compare to when we manage them by array.
+
+		       PAGING TO AND FROM DISK
+		       =======================
+
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+page: Select the physical page frame for the replacement. Details about
+struct member is written on the comment.
+/* Struct the physical page frame for replacement */
+struct page {
+  void *kaddr; // Kernel address
+  struct vm_entry *vme; // Corresponding vm_entry
+  struct thread *thread; // Thread which the page is used.
+  struct list_elem lru; // List element for lru_list.
+};
+
+struct list lru_list: page lists to find the least recently used page.
+struct lock lru_list_lock: lock for lru_list.
+struct page *lru_clock: Global Page for LRU Algorithm.
+
+struct lock swap_lock: lock for avoiding race conditions during swapping.
+struct bitmap *swap_map: bitmap for swap partition.
+struct block *swap_block: memory block for whole swap partition.
+
+---- ALGORITHMS ----
+
+>> B2: When a frame is required but none is free, some frame must be
+>> evicted.  Describe your code for choosing a frame to evict.
+
+When I choose a victim, I used the Clock Algorithm. It means that
+I set accessed bit of the pages to zero while I'm searching for a victim.
+Therefore, after I check the whole lists, the first one must be selected
+as a victim since it is not accessed currently.
+
+>> B3: When a process P obtains a frame that was previously used by a
+>> process Q, how do you adjust the page table (and any other data
+>> structures) to reflect the frame Q no longer has?
+
+When I get the page from the Q, I could know the page is from the Q
+by its struct member. Then, I could get the thread structure of the Q
+and clear the page from the Q by using pagedir_clear_page.
+
+>> B4: Explain your heuristic for deciding whether a page fault for an
+>> invalid virtual address should cause the stack to be extended into
+>> the page that faulted.
+
+I created verify_stack() function that verifies whether the fault address
+is valid to cause the stack to be expanded or not. And, I created expand_stack()
+function that expands stack. Also, I modified check_address function into that
+can verify addresses and expand the stack.
+
+---- SYNCHRONIZATION ----
+
+>> B5: Explain the basics of your VM synchronization design. In
+>> particular, explain how it prevents deadlock. (Refer to the
+>> textbook for an explanation of the necessary conditions for
+>> deadlock.)
+
+I defined two locks for swap and page structure.
+
+The interface functions for swap and pages acquires corresponding
+lock inside the function and the functions call by them does not
+acquires the same lock.
+
+Also, there's no case that needs both of them at the same time
+since I do not used both lock at the same function, so there's no
+circular wait.
+
+>> B6: A page fault in process P can cause another process Q's frame
+>> to be evicted.  How do you ensure that Q cannot access or modify
+>> the page during the eviction process?  How do you avoid a race
+>> between P evicting Q's frame and Q faulting the page back in?
+
+I used lru_lock when allocating and evicting the page. Since, Q need
+to get lock to get page back, Q need to wait until evicting is
+finished.
+
+>> B7: Suppose a page fault in process P causes a page to be read from
+>> the file system or swap.  How do you ensure that a second process Q
+>> cannot interfere by e.g. attempting to evict the frame while it is
+>> still being read in?
+
+There's a pinned flag which prevent such situation. If pinned flag is
+set to 1, no process cannot evict the page. I set the pin to 1 while
+reading, writing, and handling the page fault and set it to 0 after it
+finishes. Therefore, Q cannot interfere P until P finishes it's operation.
+
+>> B8: Explain how you handle access to paged-out pages that occur
+>> during system calls.  Do you use page faults to bring in pages (as
+>> in user programs), or do you have a mechanism for "locking" frames
+>> into physical memory, or do you use some other design?  How do you
+>> gracefully handle attempted accesses to invalid virtual addresses?
+
+I used page faults to bring in pages. And before call system calls,
+I called check_address() functions first to check whether the address
+is invalid or not.
+
+---- RATIONALE ----
+
+>> B9: A single lock for the whole VM system would make
+>> synchronization easy, but limit parallelism.  On the other hand,
+>> using many locks complicates synchronization and raises the
+>> possibility for deadlock but allows for high parallelism.  Explain
+>> where your design falls along this continuum and why you chose to
+>> design it this way.
+
+Since locking the whole VM system limits the parallism so that leads
+to the poor performance, I used multiple locks, however, each lock is
+only used for the corresponding functions to avoid deadlock.
+
+			 MEMORY MAPPED FILES
+			 ===================
+
+---- DATA STRUCTURES ----
+
+>> C1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+mmap_file: Structure to manage memory mapped file. Details about
+struct member is written on the comment.
+struct mmap_file {
+  mapid_t mapid; // ID to identify the file
+  struct file *file; // file pointer identify which file is mapped.
+  struct list_elem elem; // list elem to insert in the thread's mmap_list
+  struct list vme_list; // list of vm_entries that used for mmap.
+};
+
+mmap_list: list for memory mapped file
+mapid: Thread's Id for mapid in mmap_file.initialized as 1,
+and increased each time the mapid is allocated to the new mmap_file.
+struct thread {
+  struct list mmap_list; // list for memory mapped file
+  int mapid;
+}
+
+---- ALGORITHMS ----
+
+>> C2: Describe how memory mapped files integrate into your virtual
+>> memory subsystem.  Explain how the page fault and eviction
+>> processes differ between swap pages and other pages.
+
+I create vm_entries until they covers the whole mmap_file. And then,
+allocates the page when the page fault occurs.
+When page fault or eviction occurs, swap pages use swap_in/out() functions
+to load/store data from/to the swap space, but mmap file load/store data by
+reading/writing file using file system call.
+
+>> C3: Explain how you determine whether a new file mapping overlaps
+>> any existing segment.
+
+I checked overlapping before file mapping by using find_vme() to check
+corresponding vm_entry already existing.
+
+---- RATIONALE ----
+
+>> C4: Mappings created with "mmap" have similar semantics to those of
+>> data demand-paged from executables, except that "mmap" mappings are
+>> written back to their original files, not to swap.  This implies
+>> that much of their implementation can be shared.  Explain why your
+>> implementation either does or does not share much of the code for
+>> the two situations.
+
+I shared the implementation by using load_file function because the
+operations are same.
+
+			   SURVEY QUESTIONS
+			   ================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future quarters or the remaining projects?
+
+>> Any other comments?

@@ -762,7 +762,7 @@ bool handle_mm_fault(struct vm_entry *vme) {
   new_page->vme = vme;
 
   // Set pin
-  //vme->pinned = true;
+  vme->pinned = true;
 
   // return false if already loaded
   if(vme->is_loaded == true){

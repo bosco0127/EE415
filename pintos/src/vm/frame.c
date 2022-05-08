@@ -54,16 +54,16 @@ struct page *alloc_page(enum palloc_flags flags){
   }
 
   // allocate page w/ palloc_get_page()
-  kaddr = palloc_get_page(flags);
+  kaddr = palloc_get_multiple(flags, 1024); //page(flags);
   // Keep trying allocating pages
   while(kaddr == NULL){
     try_to_free_pages(flags);
-    kaddr = palloc_get_page(flags);
+    kaddr = palloc_get_multiple(flags, 1024); //page(flags);
   }
   // allocate page structure, initialize
   new = malloc(sizeof(struct page));
   if(new == NULL){
-    palloc_free_page(kaddr);
+    palloc_free_multiple(kaddr, 1024); //page(kaddr);
     return NULL;
   }
   new->kaddr = kaddr;
@@ -102,7 +102,7 @@ void __free_page(struct page* page){
   del_page_from_lru_list(page);
 
   // Deallocate memory of page
-  palloc_free_page(page->kaddr);
+  palloc_free_multiple(page->kaddr, 1024); //page(kaddr);
   free(page);
 }
 

@@ -498,6 +498,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 /* load() helpers. */
 
 static bool install_page (void *upage, void *kpage, bool writable);
+static bool install_hpage (void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -583,8 +584,66 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (read_bytes + zero_bytes >= HPGSIZE && \
          ((uint32_t) pg_round_down(upage) & HPGMASK) == 0) {
         /* Huge Page. */
+        /* Create vm_entry with malloc() */
+        struct vm_entry *vme =(struct vm_entry *) malloc(sizeof(struct vm_entry));
+        if(vme == NULL){
+          return false;
+        }
+
+        /* Setting vm_entry members, offset and size of file to read when virtual
+          page is requitred, zero byte to pad at the end, ... */
+        vme->type = VM_BIN;
+        vme->vaddr = upage;
+        vme->writable = writable;
+        vme->is_loaded = false;
+        vme->pinned = false;
+        vme->file = reopened_file; //file;
+        vme->offset = ofs;
+        vme->read_bytes = hpage_read_bytes;
+        vme->zero_bytes = hpage_zero_bytes;
+
+        /* Add vm_entry to hash table by insert_vme() */
+        if(!insert_vme(&thread_current()->vm,vme)){
+          free(vme);
+          return false;
+        }
+
+        /* Advance. */
+        ofs += hpage_read_bytes;
+        read_bytes -= hpage_read_bytes;
+        zero_bytes -= hpage_zero_bytes;
+        upage += HPGSIZE;
       } else {
         /* 4KB Page. */
+        /* Create vm_entry with malloc() */
+        struct vm_entry *vme =(struct vm_entry *) malloc(sizeof(struct vm_entry));
+        if(vme == NULL){
+          return false;
+        }
+
+        /* Setting vm_entry members, offset and size of file to read when virtual
+          page is requitred, zero byte to pad at the end, ... */
+        vme->type = VM_BIN;
+        vme->vaddr = upage;
+        vme->writable = writable;
+        vme->is_loaded = false;
+        vme->pinned = false;
+        vme->file = reopened_file; //file;
+        vme->offset = ofs;
+        vme->read_bytes = page_read_bytes;
+        vme->zero_bytes = page_zero_bytes;
+
+        /* Add vm_entry to hash table by insert_vme() */
+        if(!insert_vme(&thread_current()->vm,vme)){
+          free(vme);
+          return false;
+        }
+
+        /* Advance. */
+        ofs += page_read_bytes;
+        read_bytes -= page_read_bytes;
+        zero_bytes -= page_zero_bytes;
+        upage += PGSIZE;
       }
       /**********************************************************************/
       /* Get a page of memory. */
@@ -607,36 +666,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           return false; 
         }*/
       /**********************************************************************/
-      
-      /* Create vm_entry with malloc() */
-      struct vm_entry *vme =(struct vm_entry *) malloc(sizeof(struct vm_entry));
-      if(vme == NULL){
-	      return false;
-      }
-
-      /* Setting vm_entry members, offset and size of file to read when virtual
-         page is requitred, zero byte to pad at the end, ... */
-      vme->type = VM_BIN;
-      vme->vaddr = upage;
-      vme->writable = writable;
-      vme->is_loaded = false;
-      vme->pinned = false;
-      vme->file = reopened_file; //file;
-      vme->offset = ofs;
-      vme->read_bytes = page_read_bytes;
-      vme->zero_bytes = page_zero_bytes;
-
-      /* Add vm_entry to hash table by insert_vme() */
-      if(!insert_vme(&thread_current()->vm,vme)){
-	      free(vme);
-      	return false;
-      }
-
-      /* Advance. */
-      ofs += page_read_bytes;
-      read_bytes -= page_read_bytes;
-      zero_bytes -= page_zero_bytes;
-      upage += PGSIZE;
     }
   return true;
 }
@@ -652,7 +681,7 @@ setup_stack (void **esp)
   kpage = alloc_page (PAL_USER | PAL_ZERO);//palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
-      success = install_page (pg_round_down(((uint8_t *) PHYS_BASE) - PGSIZE), kpage->kaddr, true);
+      success = install_hpage (pg_round_down(((uint8_t *) PHYS_BASE) - PGSIZE), kpage->kaddr, true);
       if (success)
         *esp = PHYS_BASE;
       else
@@ -809,7 +838,7 @@ bool handle_mm_fault(struct vm_entry *vme) {
   }
 
   // Mapping new_page and upage w/ install_page()
-  success = install_page(vme->vaddr,new_page->kaddr,vme->writable);
+  success = install_hpage(vme->vaddr,new_page->kaddr,vme->writable);
   if(success == false){
     free_page(new_page->kaddr);
     return success;
@@ -838,4 +867,14 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}
+
+static bool
+install_hpage (void *upage, void *kpage, bool writable)
+{
+  struct thread *t = thread_current ();
+
+  /* Verify that there's not already a page at that virtual
+     address, then map our page there. */
+  return pagedir_set_hpage (t->pagedir, upage, kpage, writable);
 }

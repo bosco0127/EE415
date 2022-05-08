@@ -261,3 +261,41 @@ invalidate_pagedir (uint32_t *pd)
       pagedir_activate (pd);
     } 
 }
+
+/* Adds a mapping in page directory PD from user virtual page
+   UPAGE to the physical frame identified by kernel virtual
+   address KPAGE.
+   UPAGE must not already be mapped.
+   KPAGE should probably be a page obtained from the user pool
+   with palloc_get_page().
+   If WRITABLE is true, the new page is read/write;
+   otherwise it is read-only.
+   Returns true if successful, false if memory allocation
+   failed. */
+bool
+pagedir_set_hpage (uint32_t *pd, void *upage, void *kpage, bool writable)
+{
+  uint32_t *pde;
+
+  ASSERT (pg_ofs (upage) == 0);
+  ASSERT (pg_ofs (kpage) == 0);
+  ASSERT (is_user_vaddr (upage));
+  ASSERT (vtop (kpage) >> PTSHIFT < init_ram_pages);
+  ASSERT (pd != init_page_dir);
+
+  pde = pd + pd_no (upage);
+  if(*pde != 0x0) {
+    return false;
+  }
+
+  *pde = pde_create (kpage);
+  if(pde == NULL) {
+    return false;
+  }
+  //*pde = kpage;
+  *pde |= PTE_PS;
+  if(writable == false) {
+    *pde &= ~(uint32_t) PTE_W;
+  }
+  return true;
+}

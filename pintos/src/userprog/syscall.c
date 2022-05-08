@@ -648,7 +648,7 @@ void do_munmap(struct mmap_file *mmap_file) {
   }
 
   // Remove all vm_entry in the vme_list
-  for(e = list_begin(&mmap_file->vme_list); e != list_end(&mmap_file->vme_list); e = list_next(e)) {
+  for(e = list_begin(&mmap_file->vme_list); e != list_end(&mmap_file->vme_list); /*e = list_next(e)*/) {
     vme = list_entry(e, struct vm_entry, mmap_elem);
 
     // Check if it is loaded.
@@ -671,9 +671,9 @@ void do_munmap(struct mmap_file *mmap_file) {
     }
 
     // Remove from the vme_list
-    temp = list_prev(e); // trouble in list_next()
-    list_remove(e);
-    e = temp;
+    //temp = list_prev(e); // trouble in list_next()
+    e = list_remove(e);
+    //e = temp;
 
     // Remove from the vm of the current thread.
     delete_vme(&cur->vm, vme);
@@ -693,7 +693,7 @@ munmap (mapid_t mapid)
   }
 
   // Remove all mmap_file in the cur->mmap_list
-  for(e = list_begin(&cur->mmap_list); e != list_end(&cur->mmap_list); e = list_next(e)) {
+  for(e = list_begin(&cur->mmap_list); e != list_end(&cur->mmap_list); /*e = list_next(e)*/) {
     mmap = list_entry(e, struct mmap_file, elem);
 
     // Check if mapid is matched or -1(close all mmap file)
@@ -706,9 +706,9 @@ munmap (mapid_t mapid)
       file_close(mmap->file);
 
       // remove from the cur->mmap_list
-      temp = list_prev(e);
-      list_remove(e);
-      e = temp;
+      //temp = list_prev(e);
+      e = list_remove(e);
+      //e = temp;
 
       // Deallocate the memory
       free(mmap);

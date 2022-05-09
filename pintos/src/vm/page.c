@@ -90,7 +90,7 @@ static void vm_destroy_func(struct hash_elem *e, void *aux UNUSED){
   if(vme->is_loaded){
     paddr = pagedir_get_page(thread_current()->pagedir, vme->vaddr);
     /* free page + remove from the lru_list */
-    free_page(paddr);
+    free_page(paddr, vme->is_huge);
     /* clear page directory */
     pagedir_clear_page(thread_current()->pagedir, vme->vaddr);
   }

@@ -44,7 +44,7 @@ void del_page_from_lru_list(struct page* page){
   }
 }
 
-struct page *alloc_page(enum palloc_flags flags){
+struct page *alloc_page(enum palloc_flags flags, bool is_huge){
   struct page *new;
   void *kaddr;
 
@@ -54,17 +54,32 @@ struct page *alloc_page(enum palloc_flags flags){
   }
 
   // allocate page w/ palloc_get_page()
-  kaddr = palloc_get_multiple(flags, 1024); //page(flags);
-  // Keep trying allocating pages
-  while(kaddr == NULL){
-    try_to_free_pages(flags);
-    kaddr = palloc_get_multiple(flags, 1024); //page(flags);
-  }
-  // allocate page structure, initialize
-  new = malloc(sizeof(struct page));
-  if(new == NULL){
-    palloc_free_multiple(kaddr, 1024); //page(kaddr);
-    return NULL;
+  if(is_huge == true) {
+    kaddr = palloc_get_multiple(flags, 1024);
+    // Keep trying allocating pages
+    while(kaddr == NULL){
+      try_to_free_pages(flags);
+      kaddr = palloc_get_multiple(flags, 1024); 
+    }
+    // allocate page structure, initialize
+    new = malloc(sizeof(struct page));
+    if(new == NULL){
+      palloc_free_multiple(kaddr, 1024); 
+      return NULL;
+    }
+  } else {
+    kaddr = palloc_get_page(flags); //multiple(flags, 1024);
+    // Keep trying allocating pages
+    while(kaddr == NULL){
+      try_to_free_pages(flags);
+      kaddr = palloc_get_page(flags); //multiple(flags, 1024); 
+    }
+    // allocate page structure, initialize
+    new = malloc(sizeof(struct page));
+    if(new == NULL){
+      palloc_free_page(kaddr); //multiple(kaddr, 1024); 
+      return NULL;
+    }
   }
   new->kaddr = kaddr;
   new->thread = thread_current();
@@ -76,7 +91,7 @@ struct page *alloc_page(enum palloc_flags flags){
   return new;
 }
 
-void free_page(void *kaddr){
+void free_page(void *kaddr, bool is_huge) {
   struct page *p;
   struct list_elem *e;
 
@@ -86,14 +101,14 @@ void free_page(void *kaddr){
     p = list_entry(e, struct page, lru);
     if(p->kaddr == kaddr){
       // Call __free_page()
-      __free_page(p);
+      __free_page(p, is_huge);
       break;
     }
   }
   lock_release(&lru_list_lock);
 }
 
-void __free_page(struct page* page){
+void __free_page(struct page* page, bool is_huge) {
   // vme->unloaded
   page->vme->is_loaded = false;
   page->vme->pinned = false;
@@ -102,8 +117,13 @@ void __free_page(struct page* page){
   del_page_from_lru_list(page);
 
   // Deallocate memory of page
-  palloc_free_multiple(page->kaddr, 1024); //page(kaddr);
-  free(page);
+  if(is_huge == true) {
+    palloc_free_multiple(page->kaddr, 1024); 
+    free(page);
+  } else {
+    palloc_free_page(page->kaddr); //multiple(page->kaddr, 1024); 
+    free(page);
+  }
 }
 
 // Returns next node of lru
@@ -170,6 +190,11 @@ void try_to_free_pages(enum palloc_flags flags){
       continue;
     }
 
+    // if huged, it is not a victim.
+    if(lru_page->vme->is_huge == true){
+      continue;
+    }
+
     // get thread that has lru page
     thread_lru = lru_page->thread;
 
@@ -198,7 +223,7 @@ void try_to_free_pages(enum palloc_flags flags){
     // page is unloaded
     lru_page->vme->is_loaded = false;
     pagedir_clear_page(thread_lru->pagedir, lru_page->vme->vaddr);
-    __free_page(lru_page);
+    __free_page(lru_page, lru_page->vme->is_huge);
     break;
   }
   lock_release(&lru_list_lock);

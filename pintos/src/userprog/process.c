@@ -583,32 +583,33 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
  
       if (read_bytes + zero_bytes >= HPGSIZE && \
          ((uint32_t) pg_round_down(upage) & HPGMASK) == 0) {
-        /* Huge Page. */
-        /* Create vm_entry with malloc() */
+        //Huge Page. 
+        // Create vm_entry with malloc() 
         struct vm_entry *vme =(struct vm_entry *) malloc(sizeof(struct vm_entry));
         if(vme == NULL){
           return false;
         }
 
-        /* Setting vm_entry members, offset and size of file to read when virtual
-          page is requitred, zero byte to pad at the end, ... */
+        // Setting vm_entry members, offset and size of file to read when virtual
+        //  page is requitred, zero byte to pad at the end, ... 
         vme->type = VM_BIN;
         vme->vaddr = upage;
         vme->writable = writable;
         vme->is_loaded = false;
         vme->pinned = false;
+        vme->is_huge = true;
         vme->file = reopened_file; //file;
         vme->offset = ofs;
         vme->read_bytes = hpage_read_bytes;
         vme->zero_bytes = hpage_zero_bytes;
 
-        /* Add vm_entry to hash table by insert_vme() */
+        // Add vm_entry to hash table by insert_vme() 
         if(!insert_vme(&thread_current()->vm,vme)){
           free(vme);
           return false;
         }
 
-        /* Advance. */
+        // Advance. 
         ofs += hpage_read_bytes;
         read_bytes -= hpage_read_bytes;
         zero_bytes -= hpage_zero_bytes;
@@ -628,6 +629,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         vme->writable = writable;
         vme->is_loaded = false;
         vme->pinned = false;
+        vme->is_huge = false;
         vme->file = reopened_file; //file;
         vme->offset = ofs;
         vme->read_bytes = page_read_bytes;
@@ -678,14 +680,14 @@ setup_stack (void **esp)
   struct page *kpage;
   bool success = false;
 
-  kpage = alloc_page (PAL_USER | PAL_ZERO);//palloc_get_page (PAL_USER | PAL_ZERO);
+  kpage = alloc_page (PAL_USER | PAL_ZERO, 0);//palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
-      success = install_hpage (pg_round_down(((uint8_t *) PHYS_BASE) - PGSIZE), kpage->kaddr, true);
+      success = install_page (pg_round_down(((uint8_t *) PHYS_BASE) - PGSIZE), kpage->kaddr, true);
       if (success)
         *esp = PHYS_BASE;
       else
-        free_page(kpage->kaddr);
+        free_page(kpage->kaddr, 0);
     }
   else
     return success;
@@ -693,7 +695,7 @@ setup_stack (void **esp)
   /* Create vm_entry with malloc() */
   struct vm_entry *vme =(struct vm_entry *) malloc(sizeof(struct vm_entry));
   if(vme == NULL){
-    free_page(kpage->kaddr);
+    free_page(kpage->kaddr, 0);
     return false;
   }
 
@@ -703,13 +705,14 @@ setup_stack (void **esp)
   vme->vaddr = pg_round_down(((uint8_t *) PHYS_BASE) - PGSIZE);
   vme->writable = true;
   vme->is_loaded = true;
-  vme->pinned = false;
+  vme->pinned = true;
+  vme->is_huge = false;
   kpage->vme = vme;
 
   /* Add vm_entry to hash table by insert_vme() */
   success = insert_vme(&thread_current()->vm,vme);
   if(!success){
-    free_page(kpage->kaddr);
+    free_page(kpage->kaddr, vme->is_huge);
     free(vme);
   }
 
@@ -736,12 +739,13 @@ struct vm_entry *expand_stack(void* addr) {
   // Initialize vme_stack
   vme_stack->is_loaded = true;
   vme_stack->pinned = false;
+  vme_stack->is_huge = false;
   vme_stack->type = VM_ANON;
   vme_stack->vaddr = pg_round_down(addr);
   vme_stack->writable = true;
 
   // Allocate page_stack & Initialize
-  page_stack = alloc_page(PAL_USER | PAL_ZERO);
+  page_stack = alloc_page(PAL_USER | PAL_ZERO, 0);
   if(page_stack == NULL) {
     free(vme_stack);
     return NULL;
@@ -753,7 +757,7 @@ struct vm_entry *expand_stack(void* addr) {
   success = install_page(vme_stack->vaddr, page_stack->kaddr, vme_stack->writable);
   if(success == false) {
     free(vme_stack);
-    free_page(page_stack->kaddr);
+    free_page(page_stack->kaddr, 0);
     return NULL;
   }
   
@@ -761,7 +765,7 @@ struct vm_entry *expand_stack(void* addr) {
   success = insert_vme(&thread_current()->vm, vme_stack);
   if(success == false) {
     free(vme_stack);
-    free_page(page_stack->kaddr);
+    free_page(page_stack->kaddr, 0);
     return NULL;
   }
 
@@ -789,9 +793,12 @@ bool handle_mm_fault(struct vm_entry *vme) {
   if (vme == NULL) {
     return success; 
   }
+
+  // Set pin
+  vme->pinned = true;
   
   // Allocate physical memory by alloc_page()
-  new_page = alloc_page (PAL_USER); //palloc_get_page (PAL_USER);
+  new_page = alloc_page (PAL_USER, vme->is_huge); //palloc_get_page (PAL_USER);
   if(new_page == NULL){
     return success;
   }
@@ -799,12 +806,9 @@ bool handle_mm_fault(struct vm_entry *vme) {
   // set page
   new_page->vme = vme;
 
-  // Set pin
-  //vme->pinned = true;
-
   // return false if already loaded
   if(vme->is_loaded == true){
-    free_page(new_page->kaddr);
+    free_page(new_page->kaddr, vme->is_huge);
     return success;
   }
 
@@ -815,7 +819,7 @@ bool handle_mm_fault(struct vm_entry *vme) {
     case VM_BIN:
       success = load_file(new_page->kaddr,vme);
       if(success == false){
-        free_page(new_page->kaddr);
+        free_page(new_page->kaddr, vme->is_huge);
         return success;
       }
       break;
@@ -823,7 +827,7 @@ bool handle_mm_fault(struct vm_entry *vme) {
     case VM_FILE:
       success = load_file(new_page->kaddr,vme);
       if(success == false){
-        free_page(new_page->kaddr);
+        free_page(new_page->kaddr, vme->is_huge);
         return success;
       }
       break;
@@ -838,10 +842,18 @@ bool handle_mm_fault(struct vm_entry *vme) {
   }
 
   // Mapping new_page and upage w/ install_page()
-  success = install_hpage(vme->vaddr,new_page->kaddr,vme->writable);
-  if(success == false){
-    free_page(new_page->kaddr);
-    return success;
+  if(vme->is_huge == true) {
+    success = install_hpage(vme->vaddr,new_page->kaddr,vme->writable);
+    if(success == false){
+      free_page(new_page->kaddr, vme->is_huge);
+      return success;
+    }
+  } else {
+    success = install_page(vme->vaddr,new_page->kaddr,vme->writable);
+    if(success == false){
+      free_page(new_page->kaddr, vme->is_huge);
+      return success;
+    }
   }
 
   // Return whether loading succeed

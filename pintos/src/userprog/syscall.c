@@ -667,7 +667,7 @@ void do_munmap(struct mmap_file *mmap_file) {
       pagedir_clear_page(cur->pagedir, vme->vaddr);
 
       // free page
-      free_page(paddr);
+      free_page(paddr, vme->is_huge);
     }
 
     // Remove from the vme_list

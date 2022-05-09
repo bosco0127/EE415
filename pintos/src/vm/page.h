@@ -21,6 +21,7 @@ struct vm_entry {
 
     bool is_loaded; // flag whether it's loaded on the physical memory
     bool pinned;
+    bool is_huge;
     struct file *file; // file pointer
 
     struct list_elem mmap_elem; // memory map list element

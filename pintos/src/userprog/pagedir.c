@@ -299,3 +299,23 @@ pagedir_set_hpage (uint32_t *pd, void *upage, void *kpage, bool writable)
   }
   return true;
 }
+
+/* Marks user virtual page UPAGE "not present" in page
+   directory PD.  Later accesses to the page will fault.  Other
+   bits in the page table entry are preserved.
+   UPAGE need not be mapped. */
+void
+pagedir_clear_hpage (uint32_t *pd, void *upage) 
+{
+  uint32_t *pde;
+
+  ASSERT (pg_ofs (upage) == 0);
+  ASSERT (is_user_vaddr (upage));
+
+  pde = pd + pd_no (upage);
+  if (pde != NULL && (*pde & PTE_P) != 0)
+    {
+      *pde &= ~PTE_P;
+      invalidate_pagedir (pd);
+    }
+}

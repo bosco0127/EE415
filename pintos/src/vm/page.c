@@ -92,7 +92,11 @@ static void vm_destroy_func(struct hash_elem *e, void *aux UNUSED){
     /* free page + remove from the lru_list */
     free_page(paddr, vme->is_huge);
     /* clear page directory */
-    pagedir_clear_page(thread_current()->pagedir, vme->vaddr);
+    if(vme->is_huge == true) {
+      pagedir_clear_hpage(thread_current()->pagedir, vme->vaddr);
+    } else {
+      pagedir_clear_page(thread_current()->pagedir, vme->vaddr);
+    }
   }
 
   /* free vm_entry */

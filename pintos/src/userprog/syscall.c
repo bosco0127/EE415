@@ -376,7 +376,10 @@ create (const char *file, unsigned initial_size)
   {
     exit(-1);
   }
+  lock_acquire(&filesys_lock);
   bool success = filesys_create(file, initial_size);
+  lock_release(&filesys_lock);
+
   return success;
 }
 
@@ -387,7 +390,10 @@ remove (const char *file)
   {
     exit(-1);
   }
+  lock_acquire(&filesys_lock);
   bool success = filesys_remove(file);
+  lock_release(&filesys_lock);
+
   return success;
 }
 
@@ -648,7 +654,8 @@ void do_munmap(struct mmap_file *mmap_file) {
   }
 
   // Remove all vm_entry in the vme_list
-  for(e = list_begin(&mmap_file->vme_list); e != list_end(&mmap_file->vme_list); e = list_next(e)) {
+  //for(e = list_begin(&mmap_file->vme_list); e != list_end(&mmap_file->vme_list); e = list_next(e)) {
+  for(e = list_begin(&mmap_file->vme_list); e != list_end(&mmap_file->vme_list);) {
     vme = list_entry(e, struct vm_entry, mmap_elem);
 
     // Check if it is loaded.
@@ -659,7 +666,8 @@ void do_munmap(struct mmap_file *mmap_file) {
       paddr = pagedir_get_page(cur->pagedir, vme->vaddr);
       if(pagedir_is_dirty(cur->pagedir, vme->vaddr) == true) {
         lock_acquire(&filesys_lock);
-        file_write_at(vme->file, vme->vaddr/*paddr*/, vme->read_bytes, vme->offset);
+        //file_write_at(mmap_file->file, paddr/*vme->vaddr*/, vme->read_bytes, vme->offset);
+        file_write_at(mmap_file->file, paddr/*vme->vaddr*/, 4096, vme->offset);
         lock_release(&filesys_lock);
       }
 
@@ -671,7 +679,7 @@ void do_munmap(struct mmap_file *mmap_file) {
     }
 
     // Remove from the vme_list
-    temp = list_prev(e); // trouble in list_next()
+    temp = list_next(e); // trouble in list_next()
     list_remove(e);
     e = temp;
 
@@ -693,7 +701,8 @@ munmap (mapid_t mapid)
   }
 
   // Remove all mmap_file in the cur->mmap_list
-  for(e = list_begin(&cur->mmap_list); e != list_end(&cur->mmap_list); e = list_next(e)) {
+  //for(e = list_begin(&cur->mmap_list); e != list_end(&cur->mmap_list); e = list_next(e)) {
+  for(e = list_begin(&cur->mmap_list); e != list_end(&cur->mmap_list);) {
     mmap = list_entry(e, struct mmap_file, elem);
 
     // Check if mapid is matched or -1(close all mmap file)
@@ -703,10 +712,12 @@ munmap (mapid_t mapid)
       do_munmap(mmap);
       
       // Close file
+      lock_acquire(&filesys_lock);
       file_close(mmap->file);
+      lock_release(&filesys_lock);
 
       // remove from the cur->mmap_list
-      temp = list_prev(e);
+      temp = list_next(e);
       list_remove(e);
       e = temp;
 

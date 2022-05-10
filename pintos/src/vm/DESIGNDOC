@@ -15,6 +15,14 @@ HyunDeok Kong : bosco0127@kaist.ac.kr
 >> If you have any preliminary comments on your submission, notes for the
 >> TAs, or extra credit, please give them here.
 
+Large Page test is implemented on the pj3-hugepage branch.
+For the large page, I modified alloc_page, free_page functions to get
+contiguous 4MB physical frame whose address is aligned. To get aligned
+address, kept searching the address by repeating palloc_get_page & palloc_free_page.
+After that, I modified install_page as install_hpage() to make pde directly point 
+the hugepage.
+
+
 NOTICE: My previous teammate dropped the course, but he remains on the
 attendance book.
 

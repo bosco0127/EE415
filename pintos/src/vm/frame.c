@@ -55,7 +55,15 @@ struct page *alloc_page(enum palloc_flags flags, bool is_huge){
 
   // allocate page w/ palloc_get_page()
   if(is_huge == true) {
+    do {
+      kaddr = palloc_get_page(flags);
+    } while ((uint32_t) kaddr % 0x400000 != 0);
+
+    palloc_free_page(kaddr);
     kaddr = palloc_get_multiple(flags, 1024);
+
+    ASSERT((uint32_t)kaddr % 0x400000 == 0);
+
     // Keep trying allocating pages
     while(kaddr == NULL){
       try_to_free_pages(flags);

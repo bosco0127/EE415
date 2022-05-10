@@ -47,17 +47,24 @@ void del_page_from_lru_list(struct page* page){
 struct page *alloc_page(enum palloc_flags flags, bool is_huge){
   struct page *new;
   void *kaddr;
+  void **temp = malloc(1024*sizeof(void *));
+  int cnt=0;
+  int i=0;
 
   // Check if flag is for user space
   if((flags & PAL_USER) == 0){
+    free(temp);
     return NULL;
   }
 
   // allocate page w/ palloc_get_page()
   if(is_huge == true) {
-    do {
+    kaddr = palloc_get_page(flags);
+    while ((uint32_t) kaddr % 0x400000 != 0) {
+      temp[cnt] = kaddr;
+      cnt++;
       kaddr = palloc_get_page(flags);
-    } while ((uint32_t) kaddr % 0x400000 != 0);
+    }
 
     palloc_free_page(kaddr);
     kaddr = palloc_get_multiple(flags, 1024);
@@ -72,8 +79,17 @@ struct page *alloc_page(enum palloc_flags flags, bool is_huge){
     // allocate page structure, initialize
     new = malloc(sizeof(struct page));
     if(new == NULL){
-      palloc_free_multiple(kaddr, 1024); 
+      palloc_free_multiple(kaddr, 1024);
+      // free unused pages.
+      for(i = 0; i < cnt; i++) {
+        palloc_free_page((void *)temp[i]);
+      }
+      free(temp);
       return NULL;
+    }
+    // free unused pages.
+    for(i = 0; i < cnt; i++) {
+      palloc_free_page((void *)temp[i]);
     }
   } else {
     kaddr = palloc_get_page(flags); //multiple(flags, 1024);
@@ -86,6 +102,7 @@ struct page *alloc_page(enum palloc_flags flags, bool is_huge){
     new = malloc(sizeof(struct page));
     if(new == NULL){
       palloc_free_page(kaddr); //multiple(kaddr, 1024); 
+      free(temp);
       return NULL;
     }
   }
@@ -94,6 +111,8 @@ struct page *alloc_page(enum palloc_flags flags, bool is_huge){
 
   // Insert page into lru_list w/ add_page_to_lru_list
   add_page_to_lru_list(new);
+
+  free(temp);
 
   // return address of page structure 
   return new;

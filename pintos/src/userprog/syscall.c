@@ -351,6 +351,10 @@ exit (int status)
   if(cur->exit_status != -1) {
     cur->exit_status = status;
   }
+ 
+  // Unmap all the mmap file
+  munmap(-1);
+
   printf("%s: exit(%d)\n", thread_name(), cur->exit_status);
   thread_exit();
 }
@@ -664,10 +668,10 @@ void do_munmap(struct mmap_file *mmap_file) {
       // Check if the page is dirty
       // If it is dirty, write back to the file.
       paddr = pagedir_get_page(cur->pagedir, vme->vaddr);
+
       if(pagedir_is_dirty(cur->pagedir, vme->vaddr) == true) {
         lock_acquire(&filesys_lock);
-        //file_write_at(mmap_file->file, paddr/*vme->vaddr*/, vme->read_bytes, vme->offset);
-        file_write_at(mmap_file->file, paddr/*vme->vaddr*/, 4096, vme->offset);
+        file_write_at(mmap_file->file, vme->vaddr, 4096, vme->offset);
         lock_release(&filesys_lock);
       }
 

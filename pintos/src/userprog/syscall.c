@@ -376,7 +376,9 @@ create (const char *file, unsigned initial_size)
   {
     exit(-1);
   }
+  lock_acquire(&filesys_lock);
   bool success = filesys_create(file, initial_size);
+  lock_release(&filesys_lock);
   return success;
 }
 
@@ -387,7 +389,9 @@ remove (const char *file)
   {
     exit(-1);
   }
+  lock_acquire(&filesys_lock);
   bool success = filesys_remove(file);
+  lock_release(&filesys_lock);
   return success;
 }
 

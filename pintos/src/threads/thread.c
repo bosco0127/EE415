@@ -291,18 +291,15 @@ thread_exit (void)
 {
   ASSERT (!intr_context ());
 
-/*#ifdef USERPROG
+#ifdef USERPROG
   process_exit ();
-#endif*/
+  sema_up(&thread_current()->wait_exit);
+#endif  
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
-#ifdef USERPROG
-  process_exit ();
-  sema_up(&thread_current()->wait_exit);
-#endif  
   list_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
   schedule ();

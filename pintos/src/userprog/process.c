@@ -251,6 +251,9 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
   
+  // Unmap all the mmap file
+  munmap(-1);
+
   for (int i = 2; i < 64; i++) {
   //for (int i = 2; i < 10; i++) {
       if (cur->fd[i] != NULL) {

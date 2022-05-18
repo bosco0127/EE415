@@ -352,9 +352,6 @@ exit (int status)
     cur->exit_status = status;
   }
  
-  // Unmap all the mmap file
-  munmap(-1);
-
   printf("%s: exit(%d)\n", thread_name(), cur->exit_status);
   thread_exit();
 }

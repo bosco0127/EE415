@@ -184,14 +184,14 @@ syscall_handler (struct intr_frame *f UNUSED)
       close((int)*(uint32_t*)arg[0]);
     break;
     
-  case SYS_SIGACTION:
+/*  case SYS_SIGACTION:
       get_argument(esp, arg, 2, esp);
       sigaction((int)*(uint32_t *)arg[0], (void *)*(uint32_t *)arg[1]);
     break;
   case SYS_SENDSIG:
       get_argument(esp, arg, 2, esp);
       sendsig((pid_t)*(uint32_t *)arg[0], (int)*(uint32_t *)arg[1]);
-    break;
+    break;*/
   case SYS_YIELD:
       sched_yield();
     break;
@@ -510,7 +510,7 @@ close (int fd)
   return file_close(fp);
 }
 
-void sigaction (int signum, void (*handler) (void))
+/*void sigaction (int signum, void (*handler) (void))
 {
   struct thread *cur = thread_current();
   cur->handler_address[signum-1] = handler;
@@ -530,7 +530,7 @@ void sendsig (pid_t pid, int signum)
   if ( t -> handler_address[signum-1] != 0) {
     printf("Signum: %d, Action: %p\n",signum, (int *)t -> handler_address[signum-1]);
   }
-}
+}*/
 
 void sched_yield ()
 {

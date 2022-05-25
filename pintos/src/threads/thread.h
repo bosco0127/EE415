@@ -110,8 +110,6 @@ struct thread
     struct list child;
     struct list_elem child_elem;
     int exit_status;
-    int handler_address[10];
-   
 #endif
 
     /* Owned by thread.c. */

@@ -484,10 +484,10 @@ init_thread (struct thread *t, const char *name, int priority)
   sema_init(&t->wait_load, 0);
   sema_init(&t->wait_exit, 0);
   list_push_back(&running_thread()->child, &t->child_elem);
-  int cnt = 0;
+  /*int cnt = 0;
   for(cnt = 0; cnt < 10; cnt ++){
     t->handler_address[cnt] = 0;
-  }
+  }*/
 #endif
   list_init(&t->mmap_list);
   t->mapid = 1;

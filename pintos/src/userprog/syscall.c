@@ -668,7 +668,7 @@ void do_munmap(struct mmap_file *mmap_file) {
 
       if(pagedir_is_dirty(cur->pagedir, vme->vaddr) == true) {
         lock_acquire(&filesys_lock);
-        file_write_at(mmap_file->file, vme->vaddr, 4096, vme->offset);
+        file_write_at(mmap_file->file, vme->vaddr, vme->read_bytes/*4096*/, vme->offset);
         lock_release(&filesys_lock);
       }
 

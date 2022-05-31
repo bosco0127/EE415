@@ -88,7 +88,7 @@ static void syscall_handler (struct intr_frame *);
 void
 syscall_init (void) 
 {
-  lock_init(&filesys_lock);
+  //lock_init(&filesys_lock);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -377,9 +377,9 @@ create (const char *file, unsigned initial_size)
   {
     exit(-1);
   }
-  lock_acquire(&filesys_lock);
+  //lock_acquire(&filesys_lock);
   bool success = filesys_create(file, initial_size);
-  lock_release(&filesys_lock);
+  //lock_release(&filesys_lock);
 
   return success;
 }
@@ -391,9 +391,9 @@ remove (const char *file)
   {
     exit(-1);
   }
-  lock_acquire(&filesys_lock);
+  //lock_acquire(&filesys_lock);
   bool success = filesys_remove(file);
-  lock_release(&filesys_lock);
+  //lock_release(&filesys_lock);
 
   return success;
 }
@@ -405,7 +405,7 @@ int open (const char *file) {
   if (file == NULL) {
       exit(-1);
   }
-  lock_acquire(&filesys_lock);
+  //lock_acquire(&filesys_lock);
   fp = filesys_open(file);
   if (fp == NULL) {
       ret = -1;
@@ -419,7 +419,7 @@ int open (const char *file) {
       }
     }
   }
-  lock_release(&filesys_lock);
+  //lock_release(&filesys_lock);
   return ret;
 }
 
@@ -437,7 +437,7 @@ int read (int fd, void* buffer, unsigned size) {
   int i;
   int ret;
   pin_buffer(buffer, size);
-  lock_acquire(&filesys_lock);
+  //lock_acquire(&filesys_lock);
   if (fd == 0) {
     for (i = 0; i < size; i ++) {
       if (input_getc() == '\0') {
@@ -447,12 +447,12 @@ int read (int fd, void* buffer, unsigned size) {
     ret = i;
   } else if (fd > 2) {
     if (thread_current()->fd[fd] == NULL) {
-      lock_release(&filesys_lock);
+      //lock_release(&filesys_lock);
       exit(-1);
     }
     ret = file_read(thread_current()->fd[fd], buffer, size);
   }
-  lock_release(&filesys_lock);
+  //lock_release(&filesys_lock);
   return ret;
 }
 
@@ -460,13 +460,13 @@ int write (int fd, const void *buffer, unsigned size) {
 
   int ret = -1;
   pin_buffer(buffer, size);
-  lock_acquire(&filesys_lock);
+  //lock_acquire(&filesys_lock);
   if (fd == 1) {
     putbuf(buffer, size);
     ret = size;
   } else if (fd > 2) {
     if (thread_current()->fd[fd] == NULL) {
-      lock_release(&filesys_lock);
+      //lock_release(&filesys_lock);
       exit(-1);
     }
     if (thread_current()->fd[fd]->deny_write) {
@@ -474,7 +474,7 @@ int write (int fd, const void *buffer, unsigned size) {
     }
     ret = file_write(thread_current()->fd[fd], buffer, size);
   }
-  lock_release(&filesys_lock);
+  //lock_release(&filesys_lock);
   return ret;
 }
 
@@ -667,9 +667,9 @@ void do_munmap(struct mmap_file *mmap_file) {
       paddr = pagedir_get_page(cur->pagedir, vme->vaddr);
 
       if(pagedir_is_dirty(cur->pagedir, vme->vaddr) == true) {
-        lock_acquire(&filesys_lock);
+        //lock_acquire(&filesys_lock);
         file_write_at(mmap_file->file, vme->vaddr, vme->read_bytes/*4096*/, vme->offset);
-        lock_release(&filesys_lock);
+        //lock_release(&filesys_lock);
       }
 
       // Clear the page
@@ -713,9 +713,9 @@ munmap (mapid_t mapid)
       do_munmap(mmap);
       
       // Close file
-      lock_acquire(&filesys_lock);
+      //lock_acquire(&filesys_lock);
       file_close(mmap->file);
-      lock_release(&filesys_lock);
+      //lock_release(&filesys_lock);
 
       // remove from the cur->mmap_list
       temp = list_next(e);

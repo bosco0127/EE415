@@ -266,7 +266,7 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
   struct inode_disk *inode_disk;
   inode_disk = (struct inode_disk *) malloc(BLOCK_SECTOR_SIZE);
   if(inode_disk == NULL) {
-    return -1;
+    PANIC("%s: inode_disk allocation failed\n", __func__);
   }
 
   lock_acquire(&inode->extend_lock);
@@ -344,7 +344,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 
   disk_inode = (struct inode_disk *) malloc(BLOCK_SECTOR_SIZE);
   if(disk_inode == NULL) {
-    return 0;
+    PANIC("%s: disk_inode allocation failed\n", __func__);
   }
 
   lock_acquire(&inode->extend_lock);
@@ -416,6 +416,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
       //lock_acquire(&inode->extend_lock);
     }
   lock_release(&inode->extend_lock);
+  free(disk_inode);
 
   return bytes_written;
 }
@@ -588,7 +589,7 @@ bool inode_update_file_length (struct inode_disk *inode_disk, off_t start_pos, o
     int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
     // Get chunk size
-    if(size >= SECTOR_SIZE) {
+    /*if(size >= SECTOR_SIZE) {
       chunk_size = SECTOR_SIZE - sector_ofs;
     }
     else {
@@ -598,6 +599,12 @@ bool inode_update_file_length (struct inode_disk *inode_disk, off_t start_pos, o
       else {
         chunk_size = size;
       }
+    }*/
+    if (sector_ofs + size > SECTOR_SIZE) {
+      chunk_size = SECTOR_SIZE - sector_ofs;
+    }
+    else {
+      chunk_size = size;
     }
 
     // sector_ofs > 0 already allocated disk block.
@@ -663,12 +670,12 @@ static void free_inode_sectors (struct inode_disk *inode_disk) {
       free_map_release(index_block1->map_table[i], 1);
       i++;
 
-      //free(index_block2);
+      free(index_block2);
     }
     // Free double-indirect block.
     free_map_release(inode_disk->double_indirect_block_sec, 1);
 
-    //free(index_block1);
+    free(index_block1);
   }
   // Indirect block release
   if(inode_disk->indirect_block_sec > 0) {
@@ -691,7 +698,7 @@ static void free_inode_sectors (struct inode_disk *inode_disk) {
     // Free index block 1
     free_map_release(inode_disk->indirect_block_sec, 1);
 
-    //free(index_block1);
+    free(index_block1);
   }
   // Direct block release
   int i = 0;

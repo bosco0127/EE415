@@ -184,9 +184,9 @@ void try_to_free_pages(enum palloc_flags flags){
     if(pagedir_is_dirty(thread_lru->pagedir, lru_page->vme->vaddr) || lru_page->vme->type == VM_ANON){
       // if file, write it to the file
       if(lru_page->vme->type == VM_FILE){
-        lock_acquire(&filesys_lock);
+        //lock_acquire(&filesys_lock);
 	      file_write_at(lru_page->vme->file, lru_page->kaddr, /*4096*/lru_page->vme->read_bytes, lru_page->vme->offset);
-	      lock_release(&filesys_lock);
+	      //lock_release(&filesys_lock);
       }
       // else, swap out
       else{

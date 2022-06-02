@@ -207,6 +207,11 @@ thread_create (const char *name, int priority,
   t->fd[0] = 0;
   t->fd[1] = 1;
 
+  // Child working dir = parent working dir
+  if(thread_current()->cur_dir != NULL) {
+    t->cur_dir = dir_reopen(thread_current()->cur_dir);
+  }
+
   /* Add to run queue. */
   thread_unblock (t);
 
@@ -491,6 +496,8 @@ init_thread (struct thread *t, const char *name, int priority)
 #endif
   list_init(&t->mmap_list);
   t->mapid = 1;
+  // Project 4
+  t->cur_dir = NULL;
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

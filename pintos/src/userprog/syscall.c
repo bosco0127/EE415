@@ -10,6 +10,8 @@
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 #include "filesys/off_t.h"
+#include "filesys/inode.h"
+#include "filesys/directory.h"
 #include "vm/page.h"
 
 struct file
@@ -205,7 +207,28 @@ syscall_handler (struct intr_frame *f UNUSED)
       get_argument(esp, arg, 1, esp);
       munmap((mapid_t)*(uint32_t*)arg[0]);
     break;    
-  }
+  case SYS_CHDIR:         /* Change the current directory. */
+    get_argument(esp, arg, 1, esp);
+    f->eax = chdir((const char *)*(uint32_t*)arg[0]);
+    break;                  
+  case SYS_MKDIR:         /* Create a directory. */
+    get_argument(esp, arg, 1, esp);
+    f->eax = mkdir((const char *)*(uint32_t*)arg[0]);
+    break;                  
+  case SYS_READDIR:       /* Reads a directory entry. */
+      get_argument(esp, arg, 2, esp);
+      check_valid_buffer((void *)*(uint32_t*)arg[1], READDIR_MAX_LEN + 1, true, esp);
+      f->eax = readdir((int)*(uint32_t *)arg[0], (char *)*(uint32_t*)arg[1]);
+    break;                
+  case SYS_ISDIR:         /* Tests if a fd represents a directory. */
+    get_argument(esp, arg, 1, esp);
+    f->eax = isdir((int)*(uint32_t*)arg[0]);
+    break;                  
+  case SYS_INUMBER:       /* Returns the inode number for a fd. */
+    get_argument(esp, arg, 1, esp);
+    f->eax = inumber((int)*(uint32_t*)arg[0]);
+    break;  
+  }               
   unpin_addr(f->esp);
 }
 
@@ -403,6 +426,7 @@ int open (const char *file) {
   int ret = -1;
   struct file* fp;
   if (file == NULL) {
+      printf("%s: file NULL\n",__func__);
       exit(-1);
   }
   //lock_acquire(&filesys_lock);
@@ -731,4 +755,91 @@ munmap (mapid_t mapid)
       }
     }
   }
+}
+
+bool
+chdir (const char *dir)
+{
+  struct thread *cur = thread_current();
+  /*char path[256+1];
+  strlcpy(path, dir, 256);
+  strlcat(path,"/0", 256);
+
+  char name[256+1];
+  struct dir *directory = parse_path (path, name);
+  if (dir == NULL) {
+    return false;
+  }
+  dir_close (cur->cur_dir);
+  cur->cur_dir = dir;*/
+  struct file *directory = filesys_open(dir);
+  if(directory == NULL) {
+    return false;
+  }
+  dir_close(cur->cur_dir);
+  cur->cur_dir = dir_open(directory->inode);
+  return true;
+}
+
+bool
+mkdir (const char *dir)
+{
+  return filesys_create_dir(dir);
+}
+
+bool
+readdir (int fd, char *name) 
+{
+  // Get file pointer by fd
+  struct file *file = thread_current()->fd[fd];
+  // Exit if get null pointer.
+  if (file == NULL) {
+    exit(-1);
+  }
+
+  struct inode *inode = file->inode;
+  // Check if it is directory or not
+  if( inode == NULL || inode_is_dir(inode) == false) {
+    return false;
+  }
+
+  // Open directory
+  struct dir *dir = dir_open(inode);
+  // Check if dir is null
+  if(dir == NULL) {
+    return false;
+  }
+
+  int i;
+  bool result = true;
+  off_t *pos = (off_t *)file + 1;
+  for(i = 0; i <= *pos && result; i++) {
+    result = dir_readdir(dir, name);
+  }
+  if(i <= *pos == false) {
+    (*pos)++;
+  }
+  return result;  
+}
+
+bool
+isdir (int fd) 
+{
+  struct file *file = thread_current()->fd[fd];
+  // Exit(-1) if NULL
+  if(file == NULL) {
+    exit(-1);
+  }
+
+  return inode_is_dir(file->inode);
+}
+
+int
+inumber (int fd) 
+{
+  struct file *file = thread_current()->fd[fd];
+  if(file == NULL) {
+    exit(-1);
+  }
+  return inode_get_inumber(file->inode);
 }

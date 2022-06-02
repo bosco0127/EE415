@@ -119,6 +119,9 @@ struct thread
     struct hash vm; // hashtable for virtual memory
     struct list mmap_list; // list for memory mapped file
     int mapid;
+
+    /* Project 4 */
+    struct dir *cur_dir;
   };
 
 /* If false (default), use round-robin scheduler.

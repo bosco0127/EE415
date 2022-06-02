@@ -50,8 +50,8 @@ void swap_in(size_t used_index, void *kaddr){
   }
 
   // Set bitmap
-  //bitmap_flip(swap_map, used_index);
-  bitmap_set_multiple(swap_map, used_index, 1, false);
+  bitmap_flip(swap_map, used_index);
+  //bitmap_set_multiple(swap_map, used_index, 1, false);
   lock_release(&swap_lock);
   //lock_release(&filesys_lock);
 }

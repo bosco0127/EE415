@@ -51,7 +51,7 @@ struct inode_indirect_block {
 };
 
 void inode_init (void);
-bool inode_create (block_sector_t, off_t /*uint32_t is_dir*/);
+bool inode_create (block_sector_t, off_t, uint32_t);
 struct inode *inode_open (block_sector_t);
 struct inode *inode_reopen (struct inode *);
 block_sector_t inode_get_inumber (const struct inode *);
@@ -69,4 +69,5 @@ static inline off_t map_table_offset (int index);
 static bool register_sector (struct inode_disk *inode_disk, block_sector_t new_sector, struct sector_location sec_loc);
 bool inode_update_file_length (struct inode_disk *inode_disk, off_t start_pos, off_t end_pos);
 static void free_inode_sectors (struct inode_disk *inode_disk);
+bool inode_is_dir (const struct inode *inode);
 #endif /* filesys/inode.h */

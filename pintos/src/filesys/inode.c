@@ -124,7 +124,7 @@ inode_init (void)
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
 bool
-inode_create (block_sector_t sector, off_t length /*uint32_t is_dir*/)
+inode_create (block_sector_t sector, off_t length, uint32_t is_dir)
 {
   struct inode_disk *disk_inode = NULL;
   bool success = false;
@@ -140,7 +140,7 @@ inode_create (block_sector_t sector, off_t length /*uint32_t is_dir*/)
     {
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
-      //disk_inode->is_dir = is_dir;
+      disk_inode->is_dir = is_dir;
       if (length > 0) {
           if(inode_update_file_length(disk_inode, 0, length) == false) {
             printf("inode_update_file_length failed!\n");
@@ -231,15 +231,15 @@ inode_close (struct inode *inode)
       list_remove (&inode->elem);
  
       /* Deallocate blocks if removed. */
+      lock_acquire(&inode->extend_lock);
       if (inode->removed) 
         {
           struct inode_disk inode_disk;
-          lock_acquire(&inode->extend_lock);
           get_disk_inode(inode, &inode_disk);
           free_inode_sectors(&inode_disk);
           free_map_release(inode->sector, 1);
-          lock_release(&inode->extend_lock);
         }
+      lock_release(&inode->extend_lock);
 
       free (inode); 
     }
@@ -251,7 +251,9 @@ void
 inode_remove (struct inode *inode) 
 {
   ASSERT (inode != NULL);
+  lock_acquire(&inode->extend_lock);
   inode->removed = true;
+  lock_release(&inode->extend_lock);
 }
 
 /* Reads SIZE bytes from INODE into BUFFER, starting at position OFFSET.
@@ -706,4 +708,26 @@ static void free_inode_sectors (struct inode_disk *inode_disk) {
     free_map_release(inode_disk->direct_map_table[i], 1);
     i++;
   }
+}
+
+bool inode_is_dir (const struct inode *inode) {
+  bool result;
+  // Allocate inode_disk on the memory
+  struct inode_disk inode_disk;
+
+  // Check if inode is removed
+  if(inode->removed == true) {
+    //printf("%s: inode is removed\n", __func__);
+    return false;
+  }
+
+  // Read on-disk inode of the in-memory inode and store the inode_disk
+  if(get_disk_inode(inode, &inode_disk) == false) {
+    printf("%s: get_disk_inode failed!\n", __func__);
+    return false;
+  }
+
+  // Return is_dir of on-disk inode
+  result = inode_disk.is_dir;
+  return result;
 }

@@ -97,12 +97,16 @@ filesys_open (const char *name)
 bool
 filesys_remove (const char *name) 
 {
+  // Cannot remove root directory.
+  if(strcmp(name,"/") == 0) {
+    return false;
+  }
   char file_name[256+1];
   struct dir *dir = parse_path(name, file_name);
 
   // Get inode
   struct inode *inode;
-  dir_lookup(dir, name, &inode);
+  dir_lookup(dir, file_name, &inode);
 
   // Temp variables
   struct dir *cur_dir = NULL;
@@ -110,9 +114,11 @@ filesys_remove (const char *name)
 
   bool success = false;
   // If inode is file, remove it. If inode is directory remove it if no files. 
-  if((inode_is_dir(inode) == false) || (cur_dir = dir_open(inode) && !dir_readdir(cur_dir, temp))) {
-    success = dir != NULL && dir_remove (dir, name);
+  if((inode_is_dir(inode) == false) || ((cur_dir = dir_open(inode)) && !dir_readdir(cur_dir, temp))) {
+    success = dir != NULL && dir_remove (dir, file_name);
+    //printf("%s: success is %d\n",__func__,success);
   }
+  //success = dir != NULL && dir_remove (dir, file_name);
   dir_close (dir);
 
   if(cur_dir != NULL) {

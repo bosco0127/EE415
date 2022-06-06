@@ -410,10 +410,10 @@ create (const char *file, unsigned initial_size)
 bool
 remove (const char *file)
 {
-  if(file==NULL)
+  /*if(file==NULL)
   {
     exit(-1);
-  }
+  }*/
   //lock_acquire(&filesys_lock);
   bool success = filesys_remove(file);
   //lock_release(&filesys_lock);
@@ -761,17 +761,6 @@ bool
 chdir (const char *dir)
 {
   struct thread *cur = thread_current();
-  /*char path[256+1];
-  strlcpy(path, dir, 256);
-  strlcat(path,"/0", 256);
-
-  char name[256+1];
-  struct dir *directory = parse_path (path, name);
-  if (dir == NULL) {
-    return false;
-  }
-  dir_close (cur->cur_dir);
-  cur->cur_dir = dir;*/
   struct file *directory = filesys_open(dir);
   if(directory == NULL) {
     return false;
@@ -812,11 +801,12 @@ readdir (int fd, char *name)
 
   int i;
   bool result = true;
-  off_t *pos = (off_t *)file + 1;
+  off_t *pos = /*0;*/(off_t *)file + 1;
+  char temp[256];
   for(i = 0; i <= *pos && result; i++) {
     result = dir_readdir(dir, name);
   }
-  if(i <= *pos == false) {
+  if((i <= *pos) == false) {
     (*pos)++;
   }
   return result;  

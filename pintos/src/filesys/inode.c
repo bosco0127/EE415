@@ -143,7 +143,7 @@ inode_create (block_sector_t sector, off_t length, uint32_t is_dir)
       disk_inode->is_dir = is_dir;
       if (length > 0) {
           if(inode_update_file_length(disk_inode, 0, length) == false) {
-            printf("inode_update_file_length failed!\n");
+            //printf("inode_update_file_length failed!\n");
             free(disk_inode);
             return success;
           }
@@ -621,7 +621,7 @@ bool inode_update_file_length (struct inode_disk *inode_disk, off_t start_pos, o
         register_sector(inode_disk, sector_idx, sec_loc);
       }
       else {
-        printf("Enter here?\n");
+        //printf("Enter here?\n");
         free(zeros);
         return false;
       }

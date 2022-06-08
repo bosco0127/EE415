@@ -98,6 +98,40 @@ static void dcache_destroy_func(struct hash_elem *e, void *aux UNUSED){
   free(dcachee);
 }
 
+void get_file_name (char *path_name, char *file_name) {
+  struct dir *dir = NULL;
+  struct thread *cur = thread_current();
+  char path[256 + 1];
+  if (path_name == NULL || file_name == NULL) {
+    return NULL;
+  }
+  if (strlen(path_name) == 0) {
+    return NULL;
+  }
+
+  // Copy path name
+  strlcpy (path, path_name, 256);
+
+  char *token, *nextToken, *savePtr;
+  token = strtok_r(path, "/", &savePtr);
+  nextToken = strtok_r(NULL, "/", &savePtr);
+
+  // if token points nothing
+  if (token == NULL) {
+    strlcpy(file_name, ".", 256);
+    return;
+  }
+
+  while (token != NULL && nextToken != NULL)
+  {
+    token = nextToken;
+    nextToken = strtok_r(NULL, "/", &savePtr);
+  }
+  // Store token to the file_name
+  strlcpy (file_name, token, 256);
+  return;  
+}
+
 /* Initializes the file system module.
    If FORMAT is true, reformats the file system. */
 void
@@ -165,15 +199,14 @@ filesys_create (const char *name, off_t initial_size)
                   && dir_add (dir, file_name, inode_sector));
   if (!success && inode_sector != 0) 
     free_map_release (inode_sector, 1);
-  dir_close (dir);
   
   if(is_absolute == true && dcachee == NULL && success == true) {
     dcachee = malloc(sizeof(struct dcache_entry));
     if(dcachee == NULL) {
       PANIC("%s: dcachee allocation failed\n", __func__);
     }
-    dcachee->dir_sector = inode_sector;
-    //dcachee->dir_sector = dir_get_inode(dir)->sector;
+    //dcachee->dir_sector = inode_sector;
+    dcachee->dir_sector = inode_get_inumber(dir_get_inode(dir));
     strlcpy (dcachee->name, name, 256);
     //printf("%s %s: cache insert: %p\n",__func__,name,dcachee->dir);
     bool result = insert_dcachee(&dcache, dcachee);
@@ -181,6 +214,8 @@ filesys_create (const char *name, off_t initial_size)
       free(dcachee);
     }
   }
+  
+  dir_close (dir);
 
   return success;
 }
@@ -204,9 +239,10 @@ filesys_open (const char *name)
   char file_name[256+1];
   struct dir *dir;
   if(is_absolute == true && dcachee != NULL) {
-    return file_open(inode_open(dcachee->dir_sector));
     //dir = dir_open(inode_open(dcachee->dir_sector));
     //printf("%s %s: cache hit: %p\n",__func__,name,dir);
+    //printf("%s %s: cache hit: %ld\n",__func__,name,dcachee->dir_sector);
+    return file_open(inode_open(dcachee->dir_sector));
   } else {/**/
     dir = parse_path(name, file_name);
     //printf("%s %s: cache miss: %p\n",__func__,name,dir);
@@ -224,8 +260,8 @@ filesys_open (const char *name)
     if(dcachee == NULL) {
       PANIC("%s: dcachee allocation failed\n", __func__);
     }
-    dcachee->dir_sector = inode->sector;
-    //dcachee->dir_sector = dir_get_inode(dir)->sector;
+    //dcachee->dir_sector = inode->sector;
+    dcachee->dir_sector = inode_get_inumber(dir_get_inode(dir));
     strlcpy (dcachee->name, name, 256);
     //printf("%s %s: cache insert: %p\n",__func__,name,dcachee->dir);
     bool result = insert_dcachee(&dcache, dcachee);
@@ -264,13 +300,15 @@ filesys_remove (const char *name)
   struct dir *dir;
   struct inode *inode;
   if(is_absolute == true && dcachee != NULL) {
-    //dir = dir_open(inode_open(dcachee->dir_sector));
-    inode = inode_open(dcachee->dir_sector);
-    inode_remove(inode);
-    inode_close(inode);
-    delete_dcachee(&dcache, dcachee);
-    return true;
+    dir = dir_open(inode_open(dcachee->dir_sector));
+    get_file_name(name, file_name);
     //printf("%s %s: cache hit: %p\n",__func__,name,dir);
+    //printf("%s %s: cache hit: %ld\n",__func__,name,dcachee->dir_sector);
+    //inode = inode_open(dcachee->dir_sector);
+    //inode_remove(inode);
+    //inode_close(inode);
+    //delete_dcachee(&dcache, dcachee);
+    //return true;
   } else {/**/
     dir = parse_path(name, file_name);
     //printf("%s %s: cache miss: %p\n",__func__,name,dir);

@@ -13,6 +13,90 @@
 struct block *fs_device;
 
 static void do_format (void);
+static unsigned dcache_hash_func(const struct hash_elem *e, void *aux UNUSED);
+static bool dcache_less_func(const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED);
+static void dcache_destroy_func(struct hash_elem *e, void *aux UNUSED);
+
+struct dcache_entry {
+  block_sector_t dir_sector;
+  char name[256+1];
+  struct hash_elem elem;
+};
+
+struct hash dcache;
+
+void dcache_init(struct hash *dcache){
+  hash_init(dcache, dcache_hash_func, dcache_less_func, NULL);
+}
+
+void dcache_destroy(struct hash *dcache){
+  hash_destroy(dcache, dcache_destroy_func);
+}
+
+struct dcache_entry* find_dcachee(char *name){
+  struct hash_elem *elem_find;
+  struct dcache_entry dcachee;
+  /* Get VPN of vaddr */
+  strlcpy (dcachee.name, name, 256);
+  /* find hash_elem */
+  elem_find = hash_find(&dcache, &dcachee.elem);
+  /* Return dcache_entry */
+  if(elem_find != NULL){
+    return hash_entry(elem_find, struct dcache_entry, elem);
+  }
+  return NULL;
+}
+
+bool insert_dcachee(struct hash *dcache, struct dcache_entry *dcachee){
+  bool success = false;
+  struct hash_elem *result;
+   
+  /* hash_insert returns NULL if success */
+  result = hash_insert(dcache, &dcachee->elem);
+  if(result == NULL){
+    success = true;
+  }
+
+  return success;
+}
+
+bool delete_dcachee(struct hash *dcache, struct dcache_entry *dcachee){
+  bool success = false;
+  struct hash_elem *result;
+   
+  /* hash_insert returns NULL if success */
+  result = hash_delete(dcache, &dcachee->elem);
+  if(result != NULL){
+    success = true;
+    /* free dcachee */
+    free(dcachee);
+  }
+
+  return success;
+}
+
+static unsigned dcache_hash_func(const struct hash_elem *e, void *aux UNUSED){
+  struct dcache_entry *dcachee = hash_entry(e, struct dcache_entry, elem);
+  return hash_string(dcachee->name);
+}
+
+static bool dcache_less_func(const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED){
+  struct dcache_entry *dcachea = hash_entry(a, struct dcache_entry, elem);
+  struct dcache_entry *dcacheb = hash_entry(b, struct dcache_entry, elem);
+  
+  if(strcmp(dcachea->name, dcacheb->name) < 0){
+    return true;
+  }
+  else
+    return false;  
+}
+
+static void dcache_destroy_func(struct hash_elem *e, void *aux UNUSED){
+  struct dcache_entry *dcachee = hash_entry(e, struct dcache_entry, elem);
+
+  /* free dcache_entry */
+  free(dcachee);
+}
 
 /* Initializes the file system module.
    If FORMAT is true, reformats the file system. */
@@ -35,6 +119,8 @@ filesys_init (bool format)
 
   // Set root directory
   thread_current()->cur_dir = dir_open_root();
+  // Dentry Cache init.
+  dcache_init(&dcache);
 }
 
 /* Shuts down the file system module, writing any unwritten data
@@ -44,6 +130,7 @@ filesys_done (void)
 {
   // Terminate Buffer Cache
   bc_term ();
+  dcache_destroy(&dcache);
   free_map_close ();
 }
 
@@ -54,9 +141,24 @@ filesys_done (void)
 bool
 filesys_create (const char *name, off_t initial_size) 
 {
+  // Dentry Cache.
+  struct dcache_entry *dcachee = NULL;
+  bool is_absolute = false;
+  if(name[0] == '/') {
+    is_absolute = true;
+    dcachee = find_dcachee(name);
+  }
+
   block_sector_t inode_sector = 0;
   char file_name[256+1];
-  struct dir *dir = parse_path(name, file_name);
+  struct dir *dir;
+  if(is_absolute == true && dcachee != NULL) {
+    dir = dir_open(inode_open(dcachee->dir_sector));
+    //printf("%s %s: cache hit: %p\n",__func__,name,dir);
+  } else {/**/
+    dir = parse_path(name, file_name);
+    //printf("%s %s: cache miss: %p\n",__func__,name,dir);
+  }/**/
   bool success = (dir != NULL
                   && free_map_allocate (1, &inode_sector)
                   && inode_create (inode_sector, initial_size, 0)
@@ -64,6 +166,21 @@ filesys_create (const char *name, off_t initial_size)
   if (!success && inode_sector != 0) 
     free_map_release (inode_sector, 1);
   dir_close (dir);
+  
+  if(is_absolute == true && dcachee == NULL && success == true) {
+    dcachee = malloc(sizeof(struct dcache_entry));
+    if(dcachee == NULL) {
+      PANIC("%s: dcachee allocation failed\n", __func__);
+    }
+    dcachee->dir_sector = inode_sector;
+    //dcachee->dir_sector = dir_get_inode(dir)->sector;
+    strlcpy (dcachee->name, name, 256);
+    //printf("%s %s: cache insert: %p\n",__func__,name,dcachee->dir);
+    bool result = insert_dcachee(&dcache, dcachee);
+    if (result == false) {
+      free(dcachee);
+    }
+  }
 
   return success;
 }
@@ -76,8 +193,24 @@ filesys_create (const char *name, off_t initial_size)
 struct file *
 filesys_open (const char *name)
 {
+  // Dentry Cache.
+  struct dcache_entry *dcachee = NULL;
+  bool is_absolute = false;
+  if(name[0] == '/') {
+    is_absolute = true;
+    dcachee = find_dcachee(name);
+  }
+
   char file_name[256+1];
-  struct dir *dir = parse_path(name, file_name);
+  struct dir *dir;
+  if(is_absolute == true && dcachee != NULL) {
+    return file_open(inode_open(dcachee->dir_sector));
+    //dir = dir_open(inode_open(dcachee->dir_sector));
+    //printf("%s %s: cache hit: %p\n",__func__,name,dir);
+  } else {/**/
+    dir = parse_path(name, file_name);
+    //printf("%s %s: cache miss: %p\n",__func__,name,dir);
+  }/**/
   if(dir == NULL) {
     return NULL;
   }
@@ -85,6 +218,22 @@ filesys_open (const char *name)
 
   if (dir != NULL)
     dir_lookup (dir, file_name, &inode);
+
+  if(is_absolute == true && dcachee == NULL) {
+    dcachee = malloc(sizeof(struct dcache_entry));
+    if(dcachee == NULL) {
+      PANIC("%s: dcachee allocation failed\n", __func__);
+    }
+    dcachee->dir_sector = inode->sector;
+    //dcachee->dir_sector = dir_get_inode(dir)->sector;
+    strlcpy (dcachee->name, name, 256);
+    //printf("%s %s: cache insert: %p\n",__func__,name,dcachee->dir);
+    bool result = insert_dcachee(&dcache, dcachee);
+    if (result == false) {
+      free(dcachee);
+    }
+  }
+
   dir_close (dir);
 
   //printf("%s: %s %p\n",__func__,name, inode);
@@ -102,11 +251,32 @@ filesys_remove (const char *name)
   if(strcmp(name,"/") == 0) {
     return false;
   }
+
+  // Dentry Cache.
+  struct dcache_entry *dcachee = NULL;
+  bool is_absolute = false;
+  if(name[0] == '/') {
+    is_absolute = true;
+    dcachee = find_dcachee(name);
+  }
+
   char file_name[256+1];
-  struct dir *dir = parse_path(name, file_name);
+  struct dir *dir;
+  struct inode *inode;
+  if(is_absolute == true && dcachee != NULL) {
+    //dir = dir_open(inode_open(dcachee->dir_sector));
+    inode = inode_open(dcachee->dir_sector);
+    inode_remove(inode);
+    inode_close(inode);
+    delete_dcachee(&dcache, dcachee);
+    return true;
+    //printf("%s %s: cache hit: %p\n",__func__,name,dir);
+  } else {/**/
+    dir = parse_path(name, file_name);
+    //printf("%s %s: cache miss: %p\n",__func__,name,dir);
+  }/**/
 
   // Get inode
-  struct inode *inode;
   dir_lookup(dir, file_name, &inode);
 
   // Temp variables
@@ -120,6 +290,12 @@ filesys_remove (const char *name)
     //printf("%s: success is %d\n",__func__,success);
   }
   //success = dir != NULL && dir_remove (dir, file_name);
+
+  if(is_absolute == true && dcachee != NULL && success == true) {  
+    //printf("%s %s: cache deleted: %p\n",__func__,name,dcachee->dir);
+    delete_dcachee(&dcache, dcachee);
+  }
+
   dir_close (dir);
 
   if(cur_dir != NULL) {

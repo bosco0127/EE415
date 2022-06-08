@@ -110,12 +110,14 @@ byte_to_sector (const struct inode_disk *inode_disk, off_t pos)
 /* List of open inodes, so that opening a single inode twice
    returns the same `struct inode'. */
 static struct list open_inodes;
+struct lock open_inodes_lock;
 
 /* Initializes the inode module. */
 void
 inode_init (void) 
 {
   list_init (&open_inodes);
+  lock_init (&open_inodes_lock);
 }
 
 /* Initializes an inode with LENGTH bytes of data and
@@ -164,6 +166,9 @@ inode_open (block_sector_t sector)
   struct list_elem *e;
   struct inode *inode;
 
+  //
+  lock_acquire (&open_inodes_lock);
+
   /* Check whether this inode is already open. */
   for (e = list_begin (&open_inodes); e != list_end (&open_inodes);
        e = list_next (e)) 
@@ -172,6 +177,8 @@ inode_open (block_sector_t sector)
       if (inode->sector == sector) 
         {
           inode_reopen (inode);
+          //
+          lock_release (&open_inodes_lock);
           return inode; 
         }
     }
@@ -188,6 +195,10 @@ inode_open (block_sector_t sector)
   inode->deny_write_cnt = 0;
   inode->removed = false;
   lock_init(&inode->extend_lock);
+
+  //
+  lock_release (&open_inodes_lock);
+
   return inode;
 }
 
@@ -222,9 +233,14 @@ inode_close (struct inode *inode)
 
   /* Release resources if this was the last opener. */
   int count = 0;
+
+  // lock_acquire(???);
+  lock_acquire (&open_inodes_lock);
+
   lock_acquire(&inode->extend_lock);
   count = --inode->open_cnt;
   lock_release(&inode->extend_lock);
+  //printf("count: %d\n",count);
   if (count == 0)
     {
       /* Remove from inode list and release lock. */
@@ -243,6 +259,9 @@ inode_close (struct inode *inode)
 
       free (inode); 
     }
+
+  // lock_release (???);
+  lock_release (&open_inodes_lock);
 }
 
 /* Marks INODE to be deleted when it is closed by the last caller who

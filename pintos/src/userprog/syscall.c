@@ -801,7 +801,7 @@ readdir (int fd, char *name)
 
   int i;
   bool result = true;
-  off_t *pos = /*0;*/(off_t *)file + 1;
+  off_t *pos = &file->pos;/*0;*///(off_t *)file + 1;
   char temp[256];
   for(i = 0; i <= *pos && result; i++) {
     result = dir_readdir(dir, name);

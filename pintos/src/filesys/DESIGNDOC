@@ -19,7 +19,7 @@ HyunDeok Kong : bosco0127@kaist.ac.kr
 >> preparing your submission, other than the Pintos documentation, course
 >> text, lecture notes, and course staff.
 
-We worked on the project 2 by referring to the ppt named "핀토스 운영체제 실습"
+We worked on the project 4 by referring to the ppt named "핀토스 운영체제 실습"
 written by professor Youjip Won when he was at the Hanyang University.
 All algorithms in the code we wrote is referred to pp.408 - end of it.
 
@@ -32,13 +32,64 @@ All algorithms in the code we wrote is referred to pp.408 - end of it.
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+struct lock open_inodes_lock; : global lock to synchronize open & close call.
+
+#define DIRECT_BLOCK_ENTRIES 123 : number of the direct block entries.
+#define INDIRECT_BLOCK_ENTRIES 128 : number of the indirect block entries.
+
+/* In-memory inode. */
+struct inode {
+    struct list_elem elem;              /* Element in inode list. */
+    block_sector_t sector;              /* Sector number of disk location. */
+    int open_cnt;                       /* Number of openers. */
+    bool removed;                       /* True if deleted, false otherwise. */
+    int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
+    struct lock extend_lock;             /* Inode lock. */
+};
+
+/* On-disk inode.
+   Must be exactly BLOCK_SECTOR_SIZE bytes long. */
+struct inode_disk {
+    off_t length;                       /* File size in bytes. */
+    unsigned magic;                     /* Magic number. */
+    uint32_t is_dir;					/* 0: file, 1: directory */
+    block_sector_t direct_map_table[DIRECT_BLOCK_ENTRIES]; /* directly mapped block sector */
+    block_sector_t indirect_block_sec; /* indirectly mapped block sector */
+    block_sector_t double_indirect_block_sec; /* double-indirectly mapped block sector */
+};
+
+enum direct_t {
+  NORMAL_DIRECT, // Save disk block number to the inode
+  INDIRECT, // Access disk block number through one index block
+  DOUBLE_INDIRECT, // Access disk block number through two index block
+  OUT_LIMIT // Invalid file offset
+};
+
+struct sector_location {
+  int directness; // Disk block access method
+  int index1; // First index block offset
+  int index2; // Second index block offset
+};
+
+struct inode_indirect_block {
+  block_sector_t map_table[INDIRECT_BLOCK_ENTRIES]; /* table for indirectly mapped block */
+};
+
 >> A2: What is the maximum size of a file supported by your inode
 >> structure?  Show your work.
+
+direct map entry : 123
+indirect map entry : 128
+double map entry : 128*128
+each block sector : 512 Bytes.
+total = (123 + 128 + 128*128)*512 Bytes = 8,517,120 Bytes.
 
 ---- SYNCHRONIZATION ----
 
 >> A3: Explain how your code avoids a race if two processes attempt to
 >> extend a file at the same time.
+
+Set inode's extend_lock to extend function to avoid race condition.
 
 >> A4: Suppose processes A and B both have file F open, both
 >> positioned at end-of-file.  If A reads and B writes F at the same
@@ -47,12 +98,19 @@ All algorithms in the code we wrote is referred to pp.408 - end of it.
 >> nonzero data, A is not allowed to see all zeros.  Explain how your
 >> code avoids this race.
 
+I set the extend_lock on the inode_read_at & inode_write_at function.
+Thus, A would read before B starts writing or read after B completely
+writes its data.
+
 >> A5: Explain how your synchronization design provides "fairness".
 >> File access is "fair" if readers cannot indefinitely block writers
 >> or vice versa.  That is, many processes reading from a file cannot
 >> prevent forever another process from writing the file, and many
 >> processes writing to a file cannot prevent another process forever
 >> from reading the file.
+
+My lock implementation has no priority to the read. So it would be operate
+in FIFO policy.
 
 ---- RATIONALE ----
 
@@ -61,6 +119,14 @@ All algorithms in the code we wrote is referred to pp.408 - end of it.
 >> indirect blocks?  If not, why did you choose an alternative inode
 >> structure, and what advantages and disadvantages does your
 >> structure have, compared to a multilevel index?
+
+My implementation is multilevel index and the reason that I choose this
+is to enable extending the file when another file is located right next
+to the file. Previous implementation cannot extend the file in that case,
+since it marked its location of the file by length, the file must be located
+continuously. However, in this implementation the file do not need be located
+continuously, so the file can be extend even though another file located right
+next to it.
 
 			    SUBDIRECTORIES
 			    ==============
@@ -71,10 +137,21 @@ All algorithms in the code we wrote is referred to pp.408 - end of it.
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+struct thread {
+	...
+	struct dir *cur_dir; : points current working directory.
+}
+
 ---- ALGORITHMS ----
 
 >> B2: Describe your code for traversing a user-specified path.  How
 >> do traversals of absolute and relative paths differ?
+
+For absolute path, directory search starts from the root directory,
+and searching down the directory by parsing the path by '/' character.
+For relative path, directory search starts from the current working
+directory which is pointed by thread structure, and searching down
+the directory by parsing the path by '/' character.
 
 ---- SYNCHRONIZATION ----
 
@@ -83,15 +160,30 @@ All algorithms in the code we wrote is referred to pp.408 - end of it.
 >> should succeed, as should only one of two simultaneous attempts to
 >> create a file with the same name, and so on.
 
+Inode_open & close is protected by global lock, open_inodes_lock,
+so it is impossible that two simultaneous attempts to remove a single
+file.
+
 >> B5: Does your implementation allow a directory to be removed if it
 >> is open by a process or if it is in use as a process's current
 >> working directory?  If so, what happens to that process's future
 >> file system operations?  If not, how do you prevent it?
 
+When we call inode_remove, it only sets the member of the inode structure
+removed as true, and does not remove the inode from the disk.
+Also, it removes in the inode_close function only when the inode's open count
+become 0 and removed flag is set to true. So inode would not be closed
+while it is opened by another thread.
+
 ---- RATIONALE ----
 
 >> B6: Explain why you chose to represent the current directory of a
 >> process the way you did.
+
+In my implementation, current working directory is pointed by thread
+structure because in this way, we could get or change current working directory
+by just simply calling thread_current() function and get or change its cur_dir
+member.
 
 			     BUFFER CACHE
 			     ============
@@ -102,14 +194,47 @@ All algorithms in the code we wrote is referred to pp.408 - end of it.
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+#define BUFFER_CACHE_ENTRY_NB 64 : number of buffer cache entry.
+#define SECTOR_SIZE 512 : size of each sector.
+
+struct buffer_head { : buffer cache head structure
+    bool dirty; : set to 1 if cache is written.
+    bool is_used; : set to 1 if cache is currently used.
+    block_sector_t sector; : points the sector number of the disk.
+    bool clock_bit; : clock bit for clock algorithm to select a victim.
+    struct lock buffer_lock; : lock for each cache entry.
+    void *data; : contains data which will be in the disk.
+};
+
+// Global variables
+void *p_buffer_cache; : Points the memory region of the buffer caches
+struct buffer_head head_buffer[BUFFER_CACHE_ENTRY_NB]; : Array of buffer head
+int clock_hand; : Variable for clock algorithm; hold current clock entry.
+struct lock clock_hand_lock; : Lock for clock hand
+
 ---- ALGORITHMS ----
 
 >> C2: Describe how your cache replacement algorithm chooses a cache
 >> block to evict.
 
+My replacement algorithm is clock algorithm.
+First, check if there is unused entry. If there is, select it as a victim.
+If not, search buffer cache entry in clockwise direction starting from clock_hand.
+If there's a entry whose clock_bit is false, write data to the disk if it is dirty,
+and then select it as a victim. If not, flip the clock_bit to false, keep searching.
+
 >> C3: Describe your implementation of write-behind.
 
+If cache hit, write data on the buffer cache. If cache miss,
+select victim and write data on the disk if the cache is dirty, and then,
+write data to the newly selected cache.
+When file system shuts down, write all the dirty cache on the disk.
+
 >> C4: Describe your implementation of read-ahead.
+
+If cache hit, read data from the buffer cache. If cache miss,
+select victim and write data on the disk if the cache is dirty, and then,
+read data from the newly selected cache.
 
 ---- SYNCHRONIZATION ----
 
@@ -117,13 +242,27 @@ All algorithms in the code we wrote is referred to pp.408 - end of it.
 >> buffer cache block, how are other processes prevented from evicting
 >> that block?
 
+Each cache block has its own lock, and I set the lock when the program
+reads or changes the any members of the buffer cache's buffer head.
+Thus, each buffer cache could be accessed by only one thread.
+
 >> C6: During the eviction of a block from the cache, how are other
 >> processes prevented from attempting to access the block?
+
+I also set the clock_hand_lock and the lock of each buffer cache entry
+thus other process prevented from accessing the block during the eviction.
 
 ---- RATIONALE ----
 
 >> C7: Describe a file workload likely to benefit from buffer caching,
 >> and workloads likely to benefit from read-ahead and write-behind.
+
+By using buffer cache, read/write workload is likely to be reduced, since
+it can read/write the data from the memory which is much faster than
+read/write the data from the disk. If cache hits, read-ahead reduce workload
+to read data from the memory so that it do not have to access the disk. Also,
+write-behind reduce workload to write data on the memory and do not have to
+write on the disk every time.
 
 			   SURVEY QUESTIONS
 			   ================

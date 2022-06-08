@@ -87,6 +87,7 @@ filesys_open (const char *name)
     dir_lookup (dir, file_name, &inode);
   dir_close (dir);
 
+  //printf("%s: %s %p\n",__func__,name, inode);
   return file_open (inode);
 }
 
